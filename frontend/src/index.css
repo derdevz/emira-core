@@ -1,5 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
+
+@font-face {
+  font-family: 'EmiraDisplay';
+  src: url('./assets/game/font/page-hero-font/Marley Antique.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'EmiraNft';
+  src: url('./assets/game/font/nft-isim-font/NATOOR.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'EmiraSoft';
+  src: url('./assets/game/font/normal-font/Young Kids.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+}
 
 @theme {
   --color-void: #f6f9fc;
@@ -15,8 +36,10 @@
   --color-text-secondary: #496174;
   --color-text-muted: #75879a;
 
-  --font-family-display: 'Manrope', system-ui, sans-serif;
+  --font-family-display: 'EmiraDisplay', system-ui, sans-serif;
   --font-family-mono: 'IBM Plex Mono', monospace;
+  --font-family-nft: 'EmiraNft', 'EmiraDisplay', system-ui, sans-serif;
+  --font-family-soft: 'EmiraSoft', 'EmiraDisplay', system-ui, sans-serif;
 
   --animate-glow: glow 2s ease-in-out infinite alternate;
 }
@@ -65,6 +88,14 @@ button {
 
 .font-mono {
   font-family: var(--font-family-mono);
+}
+
+.font-nft {
+  font-family: var(--font-family-nft);
+}
+
+.font-soft {
+  font-family: var(--font-family-soft);
 }
 
 .text-glow {
