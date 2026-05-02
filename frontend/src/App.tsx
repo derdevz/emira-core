@@ -1,28 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Award,
-  BadgeCheck,
-  Boxes,
   Check,
   ChevronDown,
-  Coins,
+  Clock,
   Copy,
   Gem,
   LogOut,
   Menu,
-  Pickaxe,
   Repeat,
-  ShieldCheck,
-  ShoppingBag,
-  Sparkles,
-  Trophy,
   UserRound,
-  Wallet,
   X,
   Zap,
 } from 'lucide-react';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import treeButton from './assets/agac1.png';
+import neafIcon from './assets/neaf.png';
+import ovaBackground from './assets/ova.jpg';
 import { connectFreighter, inspectFreighter, type WalletConnection } from './lib/freighter';
 
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
@@ -44,16 +38,36 @@ const nftCollection = [
   { name: 'Mint Runner', rarity: 'Common', power: '+3%', tone: 'from-emerald-200 to-lime-300' },
 ];
 
-const upgrades = [
-  { name: 'Turbo Tap', description: 'Tiklama basina daha yuksek EMR.', price: 1200, boost: 8, icon: Zap },
-  { name: 'Miner Bot', description: 'Cevrimdisi kazanci otomatik toplar.', price: 4600, boost: 28, icon: Pickaxe },
-  { name: 'Vault Key', description: 'Gunluk kasa odullerini buyutur.', price: 9200, boost: 56, icon: ShieldCheck },
-];
+type UpgradeKind = 'tap' | 'passive' | 'luck';
 
-const marketItems = [
-  { name: 'Energy Pack', price: 350, tag: 'Daily', icon: Zap },
-  { name: 'Mystery NFT Box', price: 2500, tag: 'Hot', icon: Sparkles },
-  { name: 'Premium Skin', price: 7600, tag: 'Limited', icon: Gem },
+const upgrades = [
+  {
+    name: 'Tap Boost',
+    description: 'Her tiklamada daha fazla NEAF kazan.',
+    price: 1200,
+    boost: 8,
+    bonus: '+8 tap gucu',
+    kind: 'tap' as UpgradeKind,
+    icon: Zap,
+  },
+  {
+    name: 'Hourly Flow',
+    description: 'Her saat basi gelen pasif NEAF miktarini arttirir.',
+    price: 4600,
+    boost: 24,
+    bonus: '+24/saat pasif NEAF',
+    kind: 'passive' as UpgradeKind,
+    icon: Clock,
+  },
+  {
+    name: 'NFT Drop Lens',
+    description: 'Tiklamalarda NFT cikma olasiligini yukseltir.',
+    price: 9200,
+    boost: 3,
+    bonus: '+3% NFT sansi',
+    kind: 'luck' as UpgradeKind,
+    icon: Gem,
+  },
 ];
 
 const leaderboard = [
@@ -78,17 +92,15 @@ function GameApp() {
   const [isOpen, setIsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [balance, setBalance] = useState(128450);
-  const [energy, setEnergy] = useState(7420);
   const [tapPower, setTapPower] = useState(42);
+  const [passiveIncome, setPassiveIncome] = useState(120);
+  const [nftDropChance, setNftDropChance] = useState(1);
   const [combo, setCombo] = useState(1);
   const [owned, setOwned] = useState(['Genesis Emira']);
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
   const [walletMessage, setWalletMessage] = useState('Freighter kontrol ediliyor.');
-  const [walletError, setWalletError] = useState('');
   const [copiedAddress, setCopiedAddress] = useState(false);
-
-  const progress = useMemo(() => Math.min(100, Math.round((balance % 50000) / 500)), [balance]);
 
   useEffect(() => {
     inspectFreighter()
@@ -112,7 +124,6 @@ function GameApp() {
   }, []);
 
   const handleConnectWallet = async () => {
-    setWalletError('');
     setWalletMenuOpen(false);
     setWalletState('connecting');
     setWalletMessage('Freighter izni bekleniyor.');
@@ -126,7 +137,6 @@ function GameApp() {
       setWallet(null);
       setWalletState(message.includes('bulunamadi') ? 'missing' : 'error');
       setWalletMessage(message);
-      setWalletError(message);
     }
   };
 
@@ -147,14 +157,21 @@ function GameApp() {
   const tapCoin = () => {
     const gain = tapPower * combo;
     setBalance((current) => current + gain);
-    setEnergy((current) => Math.max(0, current - 12));
     setCombo((current) => (current >= 5 ? 1 : current + 1));
   };
 
-  const buyUpgrade = (price: number, boost: number) => {
+  const buyUpgrade = (price: number, boost: number, kind: UpgradeKind) => {
     if (balance < price) return;
     setBalance((current) => current - price);
-    setTapPower((current) => current + boost);
+    if (kind === 'tap') {
+      setTapPower((current) => current + boost);
+    }
+    if (kind === 'passive') {
+      setPassiveIncome((current) => current + boost);
+    }
+    if (kind === 'luck') {
+      setNftDropChance((current) => current + boost);
+    }
   };
 
   return (
@@ -268,17 +285,13 @@ function GameApp() {
             element={
               <HomePage
                 balance={balance}
-                energy={energy}
                 tapPower={tapPower}
+                passiveIncome={passiveIncome}
+                nftDropChance={nftDropChance}
                 combo={combo}
-                progress={progress}
-                ownedCount={owned.length}
-                wallet={wallet}
                 walletState={walletState}
-                walletMessage={walletMessage}
-                walletError={walletError}
-                onConnect={handleConnectWallet}
                 onTap={tapCoin}
+                onBuyUpgrade={buyUpgrade}
               />
             }
           />
@@ -295,118 +308,93 @@ function GameApp() {
 
 function HomePage({
   balance,
-  energy,
   tapPower,
+  passiveIncome,
+  nftDropChance,
   combo,
-  progress,
-  ownedCount,
-  wallet,
   walletState,
-  walletMessage,
-  walletError,
-  onConnect,
   onTap,
+  onBuyUpgrade,
 }: {
   balance: number;
-  energy: number;
   tapPower: number;
+  passiveIncome: number;
+  nftDropChance: number;
   combo: number;
-  progress: number;
-  ownedCount: number;
-  wallet: WalletConnection | null;
   walletState: WalletUiState;
-  walletMessage: string;
-  walletError: string;
-  onConnect: () => void;
   onTap: () => void;
+  onBuyUpgrade: (price: number, boost: number, kind: UpgradeKind) => void;
 }) {
   return (
-    <div>
-      <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-aurora-mid/15 bg-white px-4 py-2 shadow-sm">
-            <Sparkles size={16} className="text-aurora-mid" />
-            <span className="font-mono text-sm text-text-secondary">Telegram clicker ruhunda Emira ekonomisi</span>
-          </div>
-
-          <h1 className="max-w-4xl font-display text-5xl font-extrabold leading-[0.95] text-text-primary md:text-7xl lg:text-8xl">
-            Emira
-            <span className="mt-4 block">Tap to earn oyun merkezi.</span>
-          </h1>
-
-          <p className="mt-6 max-w-3xl text-lg leading-relaxed text-text-secondary md:text-xl">
-            Coin tikla, enerji yonet, NFT koleksiyonu kur, pazardan guc satin al ve Soroban uzerindeki
-            sahiplik/claim katmaniyla haftalik liderlik siralamasinda yukari cik.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-4">
-            <button className="neo-brutal bg-aurora-mid px-8 py-4 font-display text-lg font-bold text-white hover:bg-aurora-start" type="button" onClick={onTap}>
-              <span className="inline-flex items-center gap-2">
-                <Coins size={18} />
-                Tiklamaya basla
-              </span>
-            </button>
-            <NavLink className="rounded-full border border-surface bg-white px-8 py-4 font-display text-lg font-bold text-text-primary hover:border-aurora-mid hover:bg-deep/70" to="/market">
-              Pazara git
-            </NavLink>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-4">
-            <TrustItem label="Anlik oyun widgetleri" />
-            <TrustItem label="Freighter cuzdan girisi" />
-            <TrustItem label="NFT bonus sistemi" />
-            <TrustItem label="Sezonluk ligler" />
-          </div>
-
-          <WalletLoginPanel wallet={wallet} state={walletState} message={walletMessage} error={walletError} onConnect={onConnect} />
-        </motion.div>
-
+    <div className="mx-auto grid h-[calc(100vh-9.5rem)] max-w-7xl items-center gap-8 overflow-hidden lg:grid-cols-[1fr_430px]">
+      <div className="grid h-full place-items-center lg:justify-items-start lg:pl-20 xl:pl-28">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="rounded-[2rem] border border-surface/70 bg-white p-6 text-left shadow-sm"
+          className="relative grid place-items-center"
         >
-          <div className="mb-6 flex items-start justify-between gap-4">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Mevcut bakiye</p>
-              <p className="mt-2 font-display text-4xl font-extrabold text-text-primary">{formatNumber(balance)} EMR</p>
-              {wallet ? (
-                <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-aurora-start">
-                  {wallet.network} / {shortAddress(wallet.address)}
-                </p>
-              ) : null}
-            </div>
-            <div className="rounded-2xl bg-neon/10 p-3 text-neon">
-              <BadgeCheck size={24} />
-            </div>
-          </div>
-
           <button
-            className="coin-button mx-auto grid h-64 w-64 place-items-center rounded-full border-[10px] border-amber-100 text-text-primary shadow-[0_26px_70px_rgba(47,128,237,0.16)] transition active:scale-95 sm:h-80 sm:w-80"
+            className="tree-tap-button grid place-items-center transition active:scale-[1.018]"
             type="button"
             onClick={onTap}
-            aria-label="Emira coin tikla"
+            aria-label="NEAF kazanmak icin agaca tikla"
           >
-            <span className="grid h-32 w-32 place-items-center rounded-full bg-white/90 text-aurora-start shadow-sm sm:h-40 sm:w-40">
-              <Coins className="h-16 w-16 sm:h-20 sm:w-20" />
-            </span>
+            <img className="h-72 w-72 object-contain drop-shadow-[0_24px_40px_rgba(15,108,189,0.22)] sm:h-[29rem] sm:w-[29rem]" src={treeButton} alt="Emira agaci" />
           </button>
-
-          <div className="mt-6 grid grid-cols-3 gap-4">
-            <Metric value={`+${tapPower}`} label="Tap gucu" />
-            <Metric value={`x${combo}`} label="Combo" />
-            <Metric value={`${formatNumber(energy)}`} label="Enerji" />
+          <div className="pointer-events-none absolute bottom-8 rounded-full border border-surface bg-white/86 px-5 py-3 text-center shadow-sm backdrop-blur">
+            <div className="flex items-center justify-center gap-2">
+              <img className="h-8 w-8 object-contain" src={neafIcon} alt="" aria-hidden="true" />
+              <span className="font-display text-2xl font-extrabold text-text-primary">{formatNumber(balance)}</span>
+            </div>
+            <p className="mt-1 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">NEAF x{combo} / +{tapPower}</p>
           </div>
         </motion.div>
       </div>
 
-      <div className="mx-auto mt-12 grid max-w-7xl gap-4 md:grid-cols-4">
-        <SmallWidget icon={Award} value="Silver II" label="Lig" />
-        <SmallWidget icon={Boxes} value={`${ownedCount}/4`} label="NFT koleksiyon" />
-        <SmallWidget icon={Zap} value={`${progress}%`} label="Seviye ilerleme" />
-        <SmallWidget icon={Trophy} value="#4" label="Haftalik sira" />
-      </div>
+      <motion.aside
+        initial={{ opacity: 0, x: 24 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="min-h-[34rem] rounded-[1.75rem] border border-surface bg-white/92 p-6 shadow-lg backdrop-blur"
+      >
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Yukseltmeler</p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <HomeStat label="Tap gucu" value={`+${tapPower}`} />
+          <HomeStat label="Pasif/saat" value={formatNumber(passiveIncome)} />
+          <HomeStat label="NFT sansi" value={`%${nftDropChance}`} />
+          <HomeStat label="Bakiye" value={`${formatNumber(balance)} NEAF`} />
+        </div>
+        <div className="mt-5 space-y-4">
+          {upgrades.map(({ name, description, price, boost, bonus, kind, icon: Icon }) => {
+            const disabled = balance < price || walletState === 'checking' || walletState === 'connecting';
+            return (
+              <button
+                key={name}
+                className={`w-full rounded-2xl border p-4 text-left transition ${
+                  disabled ? 'border-surface bg-deep/60 text-text-muted' : 'border-surface bg-white hover:-translate-y-0.5 hover:border-aurora-mid'
+                }`}
+                type="button"
+                disabled={disabled}
+                onClick={() => onBuyUpgrade(price, boost, kind)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-deep p-3 text-aurora-start">
+                    <Icon size={20} />
+                  </div>
+                  <div>
+                    <p className="font-display text-base font-bold">{name}</p>
+                    <p className="text-xs leading-5 text-text-secondary">{description}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between font-mono text-xs uppercase tracking-[0.14em]">
+                  <span>{formatNumber(price)} NEAF</span>
+                  <span className="text-aurora-start">{bonus}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </motion.aside>
     </div>
   );
 }
@@ -453,64 +441,41 @@ function MuseumPage({ owned, onAddNft }: { owned: string[]; onAddNft: (name: str
   );
 }
 
-function MarketPage({ balance, onBuyUpgrade }: { balance: number; onBuyUpgrade: (price: number, boost: number) => void }) {
+function MarketPage({ balance, onBuyUpgrade }: { balance: number; onBuyUpgrade: (price: number, boost: number, kind: UpgradeKind) => void }) {
   return (
     <div>
-      <SectionHeader title="Pazar" description="Boost, enerji, kutu ve sezonluk kozmetiklerin widget kartlar halinde durdugu alan." centered />
-      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1fr_0.8fr]">
-        <div className="grid gap-6 md:grid-cols-3">
-          {marketItems.map(({ name, price, tag, icon: Icon }, index) => (
-            <motion.article
-              key={name}
-              initial={{ opacity: 0, y: 32 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.08 }}
-              className="rounded-[1.75rem] border border-surface bg-white p-6 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <div className="rounded-2xl bg-deep p-3 text-aurora-start">
-                  <Icon size={24} />
-                </div>
-                <span className="rounded-full border border-aurora-mid/15 bg-white px-3 py-1 font-mono text-xs uppercase text-aurora-start">{tag}</span>
-              </div>
-              <h3 className="mt-6 font-display text-2xl font-bold">{name}</h3>
-              <p className="mt-2 text-text-secondary">{formatNumber(price)} EMR</p>
-              <button className="mt-6 rounded-full border border-surface bg-deep px-5 py-3 font-display text-sm font-bold text-text-primary hover:border-aurora-mid" type="button">
-                Satin al
-              </button>
-            </motion.article>
-          ))}
-        </div>
-
-        <div className="rounded-[1.75rem] border border-surface bg-white p-8 shadow-sm">
-          <h3 className="font-display text-2xl font-bold">Yukseltmeler</h3>
-          <div className="mt-6 space-y-4">
-            {upgrades.map(({ name, description, price, boost, icon: Icon }) => {
-              const disabled = balance < price;
-              return (
-                <button
-                  key={name}
-                  className={`w-full rounded-2xl border p-5 text-left transition ${
-                    disabled ? 'border-surface bg-deep/60 text-text-muted' : 'border-surface bg-white hover:-translate-y-0.5 hover:border-aurora-mid'
-                  }`}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onBuyUpgrade(price, boost)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="rounded-xl bg-deep p-3 text-aurora-start">
-                      <Icon size={20} />
-                    </div>
-                    <div>
-                      <p className="font-display text-lg font-bold">{name}</p>
-                      <p className="text-sm text-text-secondary">{description}</p>
-                    </div>
+      <SectionHeader title="Pazar" description="NEAF ile oyun ekonomisini guclendiren yukseltmeler." centered />
+      <div className="mx-auto max-w-4xl rounded-[1.75rem] border border-surface bg-white p-8 shadow-sm">
+        <h3 className="font-display text-2xl font-bold">Yukseltmeler</h3>
+        <div className="mt-6 space-y-4">
+          {upgrades.map(({ name, description, price, boost, bonus, kind, icon: Icon }) => {
+            const disabled = balance < price;
+            return (
+              <button
+                key={name}
+                className={`w-full rounded-2xl border p-5 text-left transition ${
+                  disabled ? 'border-surface bg-deep/60 text-text-muted' : 'border-surface bg-white hover:-translate-y-0.5 hover:border-aurora-mid'
+                }`}
+                type="button"
+                disabled={disabled}
+                onClick={() => onBuyUpgrade(price, boost, kind)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="rounded-xl bg-deep p-3 text-aurora-start">
+                    <Icon size={20} />
                   </div>
-                  <p className="mt-4 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{formatNumber(price)} EMR</p>
-                </button>
-              );
-            })}
-          </div>
+                  <div>
+                    <p className="font-display text-lg font-bold">{name}</p>
+                    <p className="text-sm text-text-secondary">{description}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between font-mono text-xs uppercase tracking-[0.16em] text-text-muted">
+                  <span>{formatNumber(price)} NEAF</span>
+                  <span className="text-aurora-start">{bonus}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -555,7 +520,7 @@ function ProfilePage({
           <p className="mt-3 text-sm text-text-secondary">{wallet ? `${wallet.network} agi aktif` : walletMessage}</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ProfileMetric label="Toplam EMR" value={formatNumber(balance)} />
+          <ProfileMetric label="Toplam NEAF" value={formatNumber(balance)} />
           <ProfileMetric label="Tap gucu" value={`+${tapPower}`} />
           <ProfileMetric label="NFT sayisi" value={String(ownedCount)} />
           <ProfileMetric label="Gunluk seri" value="7 gun" />
@@ -671,66 +636,6 @@ function WalletMenu({
   );
 }
 
-function WalletLoginPanel({
-  wallet,
-  state,
-  message,
-  error,
-  onConnect,
-}: {
-  wallet: WalletConnection | null;
-  state: WalletUiState;
-  message: string;
-  error: string;
-  onConnect: () => void;
-}) {
-  const isBusy = state === 'checking' || state === 'connecting';
-
-  return (
-    <div className="mt-8 rounded-[1.5rem] border border-surface bg-white/85 p-5 shadow-sm">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4">
-          <div className={`rounded-2xl p-3 ${wallet ? 'bg-neon/10 text-neon' : 'bg-deep text-aurora-start'}`}>
-            <Wallet size={22} />
-          </div>
-          <div>
-            <p className="font-display text-lg font-bold text-text-primary">
-              {wallet ? 'Freighter ile giris yapildi' : 'Freighter cuzdan girisi'}
-            </p>
-            <p className="mt-1 text-sm leading-relaxed text-text-secondary">{message}</p>
-            {wallet ? (
-              <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-aurora-start">
-                {wallet.network} / {shortAddress(wallet.address)}
-              </p>
-            ) : null}
-            {error ? <p className="mt-2 text-sm font-semibold text-red-500">{error}</p> : null}
-          </div>
-        </div>
-
-        {state === 'missing' ? (
-          <a
-            className="inline-flex shrink-0 justify-center rounded-full bg-aurora-mid px-5 py-3 font-display text-sm font-bold text-white hover:bg-aurora-start"
-            href={freighterInstallUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Freighter kur
-          </a>
-        ) : (
-          <button
-            className="inline-flex shrink-0 justify-center rounded-full bg-aurora-mid px-5 py-3 font-display text-sm font-bold text-white hover:bg-aurora-start disabled:cursor-wait disabled:opacity-70"
-            type="button"
-            onClick={onConnect}
-            disabled={isBusy || state === 'connected'}
-          >
-            {walletButtonLabel(state, wallet)}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function shortAddress(address: string) {
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
@@ -741,6 +646,15 @@ function walletButtonLabel(state: WalletUiState, wallet: WalletConnection | null
   if (state === 'connecting') return 'Bekleniyor';
   if (state === 'missing') return 'Freighter kur';
   return 'Freighter giris';
+}
+
+function HomeStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-surface bg-deep px-4 py-3">
+      <p className="font-display text-lg font-extrabold text-text-primary">{value}</p>
+      <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">{label}</p>
+    </div>
+  );
 }
 
 function ScrollToTop() {
@@ -756,9 +670,15 @@ function ScrollToTop() {
 function GridBackground() {
   return (
     <div className="pointer-events-none fixed inset-0 z-0">
-      <div className="absolute inset-0 bg-gradient-to-b from-white/50 via-transparent to-transparent" />
+      <img
+        className="absolute inset-0 h-full w-full object-cover opacity-[0.38]"
+        src={ovaBackground}
+        alt=""
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-white/52 via-void/56 to-void/68" />
       <div
-        className="absolute inset-0 opacity-25"
+        className="absolute inset-0 opacity-20"
         style={{
           backgroundImage: `
             linear-gradient(rgba(15, 108, 189, 0.05) 1px, transparent 1px),
@@ -781,36 +701,6 @@ function SectionHeader({ title, description, centered = false }: { title: string
       <h2 className="font-display text-4xl font-extrabold text-text-primary md:text-6xl">{title}</h2>
       <p className={`mt-4 max-w-3xl text-lg leading-relaxed text-text-secondary ${centered ? 'mx-auto' : ''}`}>{description}</p>
     </motion.div>
-  );
-}
-
-function TrustItem({ label }: { label: string }) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-text-secondary">
-      <BadgeCheck size={16} className="text-neon" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function Metric({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-2xl border border-surface bg-deep px-4 py-4">
-      <div className="font-display text-2xl font-extrabold text-text-primary">{value}</div>
-      <div className="mt-1 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{label}</div>
-    </div>
-  );
-}
-
-function SmallWidget({ icon: Icon, value, label }: { icon: typeof Trophy; value: string; label: string }) {
-  return (
-    <div className="rounded-[1.5rem] border border-surface bg-white p-5 shadow-sm">
-      <div className="mb-4 inline-flex rounded-2xl bg-deep p-3 text-aurora-start">
-        <Icon size={22} />
-      </div>
-      <div className="font-display text-3xl font-extrabold">{value}</div>
-      <div className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{label}</div>
-    </div>
   );
 }
 
