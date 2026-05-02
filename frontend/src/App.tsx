@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowUpDown,
@@ -209,6 +210,7 @@ type UpgradeId = (typeof upgrades)[number]['id'];
 type LeaderboardMode = 'taps' | 'balance' | 'owned';
 
 const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
+const modalRoot = typeof document !== 'undefined' ? document.body : null;
 
 export default function App() {
   const Router = import.meta.env.VITE_USE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
@@ -326,11 +328,11 @@ function GameApp() {
 
   const leaderboardPlayers = useMemo(
     () => [
-      { name: '@emira_player', badge: 'Silver', taps: tapPower, balance, ownedCount: owned.length, isSelf: true },
-      { name: '@emira_queen', badge: 'Diamond', taps: 164, balance: 884200, ownedCount: 12, isSelf: false },
-      { name: '@tapmaster', badge: 'Platinum', taps: 138, balance: 761040, ownedCount: 9, isSelf: false },
-      { name: '@sorobanx', badge: 'Gold', taps: 121, balance: 640800, ownedCount: 7, isSelf: false },
-      { name: '@moonforge', badge: 'Bronze', taps: 88, balance: 118030, ownedCount: 4, isSelf: false },
+      { name: '@emira_player', badge: 'Gumus', taps: tapPower, balance, ownedCount: owned.length, isSelf: true },
+      { name: '@emira_queen', badge: 'Elmas', taps: 164, balance: 884200, ownedCount: 12, isSelf: false },
+      { name: '@tapmaster', badge: 'Platin', taps: 138, balance: 761040, ownedCount: 9, isSelf: false },
+      { name: '@sorobanx', badge: 'Altin', taps: 121, balance: 640800, ownedCount: 7, isSelf: false },
+      { name: '@moonforge', badge: 'Bronz', taps: 88, balance: 118030, ownedCount: 4, isSelf: false },
     ],
     [balance, owned.length, tapPower],
   );
@@ -680,11 +682,11 @@ function MarketPage({
 }) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('Common');
+  const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('all');
   const [sortMode, setSortMode] = useState<'low' | 'high'>('low');
   const [isCompactGrid, setIsCompactGrid] = useState(false);
 
-  const marketItems = nftCollection.filter((nft) => listedNftNames.includes(nft.name) || (ownedNftNames.includes(nft.name) && nft.rarity === 'Common'));
+  const marketItems = nftCollection.filter((nft) => listedNftNames.includes(nft.name) || ownedNftNames.includes(nft.name));
 
   const filteredItems = marketItems
     .filter((nft) => (rarityFilter === 'all' ? true : nft.rarity === rarityFilter))
@@ -703,10 +705,10 @@ function MarketPage({
           <div className="flex items-center justify-between">
             <p className="font-display text-2xl font-bold text-text-primary">Nadirlik</p>
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-surface bg-deep text-text-muted transition hover:border-aurora-mid hover:text-aurora-start"
+              className="inline-flex items-center gap-2 rounded-full border border-surface bg-deep px-3 py-2 text-text-muted transition hover:border-aurora-mid hover:text-aurora-start"
               type="button"
               onClick={() => {
-                setRarityFilter('Common');
+                setRarityFilter('all');
                 setSearchTerm('');
                 setSortMode('low');
                 setIsCompactGrid(false);
@@ -714,6 +716,7 @@ function MarketPage({
               aria-label="Pazar filtrelerini sifirla"
             >
               <SlidersHorizontal size={18} />
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em]">Sifirla</span>
             </button>
           </div>
           <div className="mt-6 grid gap-3">
@@ -777,8 +780,8 @@ function MarketPage({
                 type="button"
                 onClick={() => setSelectedNft(nft)}
               >
-                <div className={`relative grid ${isCompactGrid ? 'aspect-auto h-full min-h-[220px]' : 'aspect-square'} place-items-center bg-gradient-to-br ${nft.tone}`}>
-                  <img className="h-full w-full object-contain p-4" src={nft.image} alt={`${nft.name} NFT gorseli`} loading="lazy" />
+                <div className={`relative grid ${isCompactGrid ? 'aspect-auto h-full min-h-[220px]' : 'aspect-square'} place-items-center overflow-hidden bg-gradient-to-br ${nft.tone}`}>
+                  <img className="h-full w-full object-cover" src={nft.image} alt={`${nft.name} NFT gorseli`} loading="lazy" />
                 </div>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -791,7 +794,7 @@ function MarketPage({
                   <div className="mt-4 flex items-center justify-between gap-3 text-sm">
                     <span className="text-text-secondary">Sahip {nft.owner}</span>
                     <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-                      {listedNftNames.includes(nft.name) ? nft.rarity : 'Hazirlaniyor'}
+                      {listedNftNames.includes(nft.name) ? nft.rarity : 'Sahibinde'}
                     </span>
                   </div>
                   <div className="mt-4 border-t border-surface pt-4">
@@ -878,7 +881,7 @@ function MarketDetailModal({
   onToggleListing: (name: string) => void;
   onClose: () => void;
 }) {
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 grid place-items-center bg-text-primary/25 px-4 backdrop-blur-sm" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -930,6 +933,8 @@ function MarketDetailModal({
       </motion.div>
     </div>
   );
+
+  return modalRoot ? createPortal(content, modalRoot) : content;
 }
 
 function ProfilePage({
@@ -960,7 +965,7 @@ function ProfilePage({
       <SectionHeader title="Profil" />
       <div className="mx-auto max-w-7xl">
         {isOwnProfile ? (
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-3">
             <button
               className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-surface bg-white/92 text-text-secondary shadow-sm transition hover:border-aurora-mid hover:text-aurora-start"
               type="button"
@@ -969,22 +974,20 @@ function ProfilePage({
             >
               <Settings2 size={20} />
             </button>
+            <button
+              className="inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-surface bg-white/92 text-text-secondary shadow-sm transition hover:border-aurora-mid hover:text-aurora-start"
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              aria-label="Profil resmi ekle"
+            >
+              {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="Profil resmi" /> : <span className="font-soft text-lg">+</span>}
+            </button>
           </div>
         ) : null}
         <div className="overflow-hidden rounded-[2rem] border border-surface bg-white shadow-sm">
-          <div className="relative h-[34rem]">
-            <img className="h-full w-full object-cover" src={selectedBackground?.image} alt={selectedBackground?.name ?? 'Profil arka plani'} />
-            <div className="absolute inset-0 bg-gradient-to-t from-white via-white/18 to-transparent" />
-            {isOwnProfile ? (
-              <button
-                className="absolute right-6 top-6 grid h-24 w-24 place-items-center overflow-hidden rounded-[1.6rem] border-4 border-white bg-white shadow-lg transition hover:border-aurora-mid/30"
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                aria-label="Profil resmi ekle"
-              >
-                {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="Profil resmi" /> : <span className="font-soft text-lg text-text-secondary">Foto Ekle</span>}
-              </button>
-            ) : null}
+          <div className="relative h-[40rem] bg-[#f8f3e7]">
+            <img className="h-full w-full object-contain object-center" src={selectedBackground?.image} alt={selectedBackground?.name ?? 'Profil arka plani'} />
+            <div className="absolute inset-0 bg-gradient-to-t from-white/92 via-white/18 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-8">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Profil arka plan preview</p>
               <h3 className="mt-3 font-display text-4xl font-extrabold text-text-primary">{viewedPlayer}</h3>
@@ -1048,7 +1051,7 @@ function LeaderboardPage({
         ].map((item) => (
           <button
             key={item.key}
-            className={`rounded-full border px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] transition ${
+            className={`rounded-full border px-5 py-3 font-soft text-xl transition ${
               mode === item.key ? 'border-aurora-mid/30 bg-aurora-mid/8 text-text-primary' : 'border-surface bg-white text-text-secondary hover:border-aurora-mid/20 hover:text-text-primary'
             }`}
             type="button"
@@ -1065,19 +1068,19 @@ function LeaderboardPage({
               {index + 1}
             </div>
             <div>
-              <p className="font-display text-lg font-bold">{player.name}</p>
-              <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{player.badge}</p>
+              <p className="font-nft text-2xl text-text-primary">{player.name}</p>
+              <p className="mt-1 inline-flex rounded-full border border-surface bg-deep px-3 py-1 font-soft text-sm text-text-secondary">{player.badge}</p>
             </div>
             <div className="justify-self-end text-right">
               <p className="font-display text-lg font-extrabold">
                 {mode === 'taps' ? `+${player.taps}` : mode === 'balance' ? formatNumber(player.balance) : player.ownedCount}
               </p>
               <button
-                className="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-aurora-start"
+                className="mt-2 rounded-full border border-aurora-mid/20 bg-aurora-mid/8 px-3 py-1 font-soft text-sm text-aurora-start"
                 type="button"
                 onClick={() => navigate(`/profile?player=${encodeURIComponent(player.name)}`)}
               >
-                Profili ziyaret et
+                Yolculuk
               </button>
             </div>
           </div>
@@ -1111,7 +1114,7 @@ function AssetPickerModal({
   const previous = options[(selectedIndex - 1 + options.length) % options.length];
   const next = options[(selectedIndex + 1) % options.length];
 
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 grid place-items-center bg-text-primary/25 px-4 backdrop-blur-sm" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -1182,6 +1185,8 @@ function AssetPickerModal({
       </motion.div>
     </div>
   );
+
+  return modalRoot ? createPortal(content, modalRoot) : content;
 }
 
 function WalletMenu({
