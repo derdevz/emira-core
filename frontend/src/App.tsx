@@ -241,7 +241,7 @@ function GameApp() {
     'nft-drop-lens': 0,
   });
   const [owned] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
-  const [listedNftNames, setListedNftNames] = useState<string[]>(() => nftCollection.filter((nft) => nft.rarity === 'Common' && nft.listed).map((nft) => nft.name));
+  const [listedNftNames, setListedNftNames] = useState<string[]>(() => nftCollection.filter((nft) => nft.listed).map((nft) => nft.name));
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
   const [walletMessage, setWalletMessage] = useState('Freighter kontrol ediliyor.');
@@ -322,17 +322,17 @@ function GameApp() {
 
   const handleToggleListing = (name: string) => {
     const nft = nftCollection.find((item) => item.name === name);
-    if (!nft || !owned.includes(name) || nft.rarity !== 'Common') return;
+    if (!nft || !owned.includes(name)) return;
     setListedNftNames((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
   };
 
   const leaderboardPlayers = useMemo(
     () => [
-      { name: '@emira_player', badge: 'Gumus', taps: tapPower, balance, ownedCount: owned.length, isSelf: true },
-      { name: '@emira_queen', badge: 'Elmas', taps: 164, balance: 884200, ownedCount: 12, isSelf: false },
-      { name: '@tapmaster', badge: 'Platin', taps: 138, balance: 761040, ownedCount: 9, isSelf: false },
-      { name: '@sorobanx', badge: 'Altin', taps: 121, balance: 640800, ownedCount: 7, isSelf: false },
-      { name: '@moonforge', badge: 'Bronz', taps: 88, balance: 118030, ownedCount: 4, isSelf: false },
+      { name: 'Emira Dreamer', badge: 'Yumusak Isik', taps: tapPower, balance, ownedCount: owned.length, isSelf: true },
+      { name: 'Cloud Paws', badge: 'Sabah Yildizi', taps: 164, balance: 884200, ownedCount: 12, isSelf: false },
+      { name: 'Mint Whisker', badge: 'Ay Cizgisi', taps: 138, balance: 761040, ownedCount: 9, isSelf: false },
+      { name: 'Soroban Bloom', badge: 'Altin Esinti', taps: 121, balance: 640800, ownedCount: 7, isSelf: false },
+      { name: 'Nova Nest', badge: 'Gun Batimi', taps: 88, balance: 118030, ownedCount: 4, isSelf: false },
     ],
     [balance, owned.length, tapPower],
   );
@@ -686,7 +686,7 @@ function MarketPage({
   const [sortMode, setSortMode] = useState<'low' | 'high'>('low');
   const [isCompactGrid, setIsCompactGrid] = useState(false);
 
-  const marketItems = nftCollection.filter((nft) => listedNftNames.includes(nft.name) || ownedNftNames.includes(nft.name));
+  const marketItems = nftCollection;
 
   const filteredItems = marketItems
     .filter((nft) => (rarityFilter === 'all' ? true : nft.rarity === rarityFilter))
@@ -794,7 +794,7 @@ function MarketPage({
                   <div className="mt-4 flex items-center justify-between gap-3 text-sm">
                     <span className="text-text-secondary">Sahip {nft.owner}</span>
                     <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-                      {listedNftNames.includes(nft.name) ? nft.rarity : 'Sahibinde'}
+                      {listedNftNames.includes(nft.name) ? nft.rarity : 'Portfolyde'}
                     </span>
                   </div>
                   <div className="mt-4 border-t border-surface pt-4">
@@ -919,10 +919,9 @@ function MarketDetailModal({
                 <button
                   className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
-                  disabled={nft.rarity !== 'Common'}
                   onClick={() => onToggleListing(nft.name)}
                 >
-                  {nft.rarity !== 'Common' ? 'Sadece Common satilabilir' : isListed ? 'Listeden kaldir' : 'Satisa koy'}
+                  {isListed ? 'Listeden kaldir' : 'Satisa koy'}
                 </button>
               ) : (
                 <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Bu NFT sana ait degil.</p>
@@ -991,7 +990,7 @@ function ProfilePage({
             <div className="absolute inset-x-0 bottom-0 p-8">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Profil arka plan preview</p>
               <h3 className="mt-3 font-display text-4xl font-extrabold text-text-primary">{viewedPlayer}</h3>
-              <p className="mt-2 max-w-xl text-sm text-text-secondary">{wallet ? `${wallet.network} agi aktif` : walletMessage}</p>
+              <p className="mt-2 max-w-xl text-sm text-text-secondary">{isOwnProfile && wallet ? `${wallet.network} agi aktif` : isOwnProfile ? walletMessage : 'Topluluk profili goruntuleniyor.'}</p>
             </div>
           </div>
         </div>
@@ -1051,7 +1050,7 @@ function LeaderboardPage({
         ].map((item) => (
           <button
             key={item.key}
-            className={`rounded-full border px-5 py-3 font-soft text-xl transition ${
+            className={`rounded-full border px-5 py-3 font-soft text-lg transition ${
               mode === item.key ? 'border-aurora-mid/30 bg-aurora-mid/8 text-text-primary' : 'border-surface bg-white text-text-secondary hover:border-aurora-mid/20 hover:text-text-primary'
             }`}
             type="button"
@@ -1069,14 +1068,14 @@ function LeaderboardPage({
             </div>
             <div>
               <p className="font-nft text-2xl text-text-primary">{player.name}</p>
-              <p className="mt-1 inline-flex rounded-full border border-surface bg-deep px-3 py-1 font-soft text-sm text-text-secondary">{player.badge}</p>
+              <p className="mt-1 inline-flex rounded-full border border-surface bg-deep px-3 py-1 font-soft text-xs text-text-secondary">{player.badge}</p>
             </div>
             <div className="justify-self-end text-right">
               <p className="font-display text-lg font-extrabold">
                 {mode === 'taps' ? `+${player.taps}` : mode === 'balance' ? formatNumber(player.balance) : player.ownedCount}
               </p>
               <button
-                className="mt-2 rounded-full border border-aurora-mid/20 bg-aurora-mid/8 px-3 py-1 font-soft text-sm text-aurora-start"
+                className="mt-2 rounded-full border border-aurora-mid/20 bg-aurora-mid/8 px-3 py-1 font-soft text-xs text-aurora-start"
                 type="button"
                 onClick={() => navigate(`/profile?player=${encodeURIComponent(player.name)}`)}
               >
