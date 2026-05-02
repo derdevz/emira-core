@@ -1,8 +1,8 @@
 # Emira Core
 
 Emira is a Telegram-style clicker game planned around Stellar Soroban smart contracts and Freighter wallet login.
-The current repository contains the React frontend, Docker setup, and architecture notes for the next backend and
-contract layers.
+The current repository contains the React frontend, a root-level Docker setup, and architecture notes for the next
+backend and contract layers.
 
 ## Current Scope
 
@@ -30,8 +30,9 @@ docs/
 frontend/
   src/                   React application
   Dockerfile             Production frontend image
-  docker-compose.yml     Local Docker runtime
+  nginx.conf             SPA-aware Nginx config
   package.json           Frontend scripts and dependencies
+docker-compose.yml       Root Docker entrypoint
 ```
 
 ## Local Development
@@ -47,7 +48,6 @@ The Vite app will run on the port printed by Vite, usually `http://localhost:517
 ## Docker
 
 ```powershell
-cd frontend
 docker compose up --build -d
 ```
 
@@ -56,6 +56,12 @@ Open:
 ```text
 http://localhost:5173
 ```
+
+## GitHub Pages
+
+The repository includes a Pages deployment workflow for the frontend.
+The deploy build enables `VITE_USE_HASH_ROUTER=true`, so direct refreshes and deep links work on GitHub Pages without
+server-side rewrite rules.
 
 ## Environment
 
@@ -93,5 +99,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the staged development roadmap.
 
 ## GitHub Workflow
 
-The repository includes a frontend CI workflow that installs dependencies, lints, and builds the app on pull requests
-and pushes to `main`.
+The repository includes:
+
+- `frontend-ci.yml` for install, lint, and build validation on pull requests and pushes to `main`
+- `deploy-pages.yml` for GitHub Pages deployment from `main`

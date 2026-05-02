@@ -13,7 +13,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import treeButton from './assets/agac1.png';
 import neafIcon from './assets/neaf.png';
 import ovaBackground from './assets/ova.jpg';
@@ -81,10 +81,12 @@ const leaderboard = [
 const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
 
 export default function App() {
+  const Router = import.meta.env.VITE_USE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
+
   return (
-    <BrowserRouter>
+    <Router>
       <GameApp />
-    </BrowserRouter>
+    </Router>
   );
 }
 

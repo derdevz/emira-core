@@ -23,8 +23,14 @@ npm run preview
 ## Docker
 
 ```powershell
+cd ..
 docker compose up --build -d
 ```
+
+## GitHub Pages
+
+The Pages deployment workflow builds the app with `VITE_USE_HASH_ROUTER=true`.
+This keeps route navigation safe on GitHub Pages, where SPA rewrite rules are not available.
 
 ## Freighter
 
