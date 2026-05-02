@@ -28,6 +28,7 @@ import { connectFreighter, inspectFreighter, type WalletConnection } from './lib
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
 type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
 type UpgradeKind = 'tap' | 'passive' | 'luck';
+type PickerOption = { id: string; name: string; image: string; price?: number };
 
 const freighterInstallUrl = 'https://www.freighter.app/';
 
@@ -126,12 +127,69 @@ function formatAssetName(path: string) {
   return toTitleCase(baseNameFromPath(path));
 }
 
+const rarityByName: Partial<Record<string, Rarity>> = {
+  'Balıkçı Kedi': 'Legendary',
+  'Ben10 Kedi': 'Legendary',
+  Caska: 'Legendary',
+  Guts: 'Legendary',
+  'Winrar Kedi': 'Legendary',
+  'Minecraft Kedisi': 'Legendary',
+  'Ateş Kedisi': 'Epic',
+  'Boşluk Kedisi': 'Epic',
+  'Boğaziçili Kedi': 'Epic',
+  'Bonibon Kedi': 'Epic',
+  'Buz Kedi': 'Epic',
+  'Elmas Kedi': 'Epic',
+  'Coder Kedi': 'Epic',
+  'Habibi Kedi': 'Epic',
+  'Havalı Kedi': 'Epic',
+  'Hipnoz Kedi': 'Epic',
+  'Kabarcıklı Kedi': 'Epic',
+  'Kral Kedi': 'Epic',
+  'Linux Cat': 'Epic',
+  'Marshmallow Kedi': 'Epic',
+  'Reverse Cart Kedi': 'Epic',
+  'Steve Kedisi': 'Epic',
+  'Sünger Kedi': 'Epic',
+  'Tuğla Kedi': 'Epic',
+  'Tilkimsi Kedi': 'Rare',
+  'Tılsımlı Kedi': 'Rare',
+  'Şeker Kedi': 'Rare',
+  'Siyahımsı Kedi': 'Rare',
+  Tekir: 'Rare',
+  'Siyah Beyaz Kedi': 'Rare',
+  'Kurdeleli Kedi': 'Rare',
+  'Kahve Benekli Kedi 2': 'Rare',
+  'Kahve Kedi': 'Rare',
+  'Gri Benekli Kedi': 'Rare',
+};
+
+const nftImageScaleByName: Partial<Record<string, number>> = {
+  'Balıkçı Kedi': 0.9,
+  'Ben10 Kedi': 0.92,
+  Caska: 0.9,
+  Guts: 0.9,
+  'Winrar Kedi': 0.95,
+  'Minecraft Kedisi': 0.93,
+  'Boğaziçili Kedi': 0.86,
+  'Bonibon Kedi': 0.9,
+  'Buz Kedi': 0.88,
+  'Coin Kedisi': 0.9,
+  'Linux Cat': 0.92,
+  'Reverse Cart Kedi': 0.92,
+  'Sünger Kedi': 0.92,
+  'İlgi Çekici Kedi': 0.94,
+};
+
+const rarityMeta = Object.fromEntries(nftRarityScale.map((item) => [item.rarity, item])) as Record<Rarity, { rarity: Rarity; power: string; tone: string }>;
+
 const nftCollection = Object.entries(nftAssets)
   .sort(([left], [right]) => left.localeCompare(right, 'tr'))
   .map(([path, image], index) => {
-    const metadata = nftRarityScale[index % nftRarityScale.length];
     const fileName = path.split('/').pop() ?? path;
     const name = normalizeNftName(fileName);
+    const rarity = rarityByName[name] ?? 'Common';
+    const metadata = rarityMeta[rarity];
 
     return {
       name,
@@ -146,6 +204,7 @@ const nftCollection = Object.entries(nftAssets)
       backgroundTrait: marketBackgrounds[index % marketBackgrounds.length],
       moodTrait: marketMoods[index % marketMoods.length],
       accessoryTrait: marketAccessories[index % marketAccessories.length],
+      imageScale: nftImageScaleByName[name] ?? 0.92,
       ...metadata,
     };
   });
@@ -162,6 +221,15 @@ const homeTreeOptions = Object.entries(homeTreeAssets)
     id: baseNameFromPath(path),
     name: formatAssetName(path),
     image,
+    price:
+      ({
+        agac1: 0,
+        agac2: 1800,
+        akasya: 3600,
+        'cicekli agac2': 7200,
+        'güllü agac': 12400,
+        'kuru agac': 18600,
+      } as Record<string, number>)[baseNameFromPath(path)] ?? 4200,
   }));
 
 const profileBackgroundOptions = Object.entries(profileBackgroundAssets)
@@ -179,8 +247,8 @@ const upgrades = [
     name: 'Tap Boost',
     description: 'Her tiklamada daha fazla NEAF kazan.',
     price: 1200,
-    boost: 8,
-    bonus: '+8 tap gucu',
+    boost: 2,
+    bonus: '+2 tap gucu',
     kind: 'tap' as UpgradeKind,
     icon: Zap,
   },
@@ -189,8 +257,8 @@ const upgrades = [
     name: 'Hourly Flow',
     description: 'Her saat basi gelen pasif NEAF miktarini arttirir.',
     price: 4600,
-    boost: 24,
-    bonus: '+24/saat pasif NEAF',
+    boost: 8,
+    bonus: '+8/saat pasif NEAF',
     kind: 'passive' as UpgradeKind,
     icon: Clock,
   },
@@ -199,8 +267,8 @@ const upgrades = [
     name: 'NFT Drop Lens',
     description: 'Tiklamalarda NFT cikma olasiligini yukseltir.',
     price: 9200,
-    boost: 3,
-    bonus: '+3% NFT sansi',
+    boost: 0.1,
+    bonus: '+0.1% NFT sansi',
     kind: 'luck' as UpgradeKind,
     icon: Gem,
   },
@@ -210,7 +278,31 @@ type UpgradeId = (typeof upgrades)[number]['id'];
 type LeaderboardMode = 'taps' | 'balance' | 'owned';
 
 const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
+const formatPercent = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
 const modalRoot = typeof document !== 'undefined' ? document.body : null;
+const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + Math.log2(level + 1) * 0.92));
+
+function NftArtwork({
+  nft,
+  className = '',
+  imageClassName = '',
+}: {
+  nft: NftItem;
+  className?: string;
+  imageClassName?: string;
+}) {
+  return (
+    <div className={`grid place-items-center overflow-hidden bg-gradient-to-br ${nft.tone} ${className}`}>
+      <img
+        className={`h-full w-full object-contain transition duration-500 ${imageClassName}`}
+        style={{ transform: `scale(${nft.imageScale})` }}
+        src={nft.image}
+        alt={`${nft.name} NFT gorseli`}
+        loading="lazy"
+      />
+    </div>
+  );
+}
 
 export default function App() {
   const Router = import.meta.env.VITE_USE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
@@ -228,11 +320,12 @@ function GameApp() {
   const [isOpen, setIsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [balance, setBalance] = useState(128450);
-  const [tapPower, setTapPower] = useState(42);
+  const [tapPower, setTapPower] = useState(1);
   const [passiveIncome, setPassiveIncome] = useState(120);
   const [nftDropChance, setNftDropChance] = useState(1);
   const [combo, setCombo] = useState(1);
   const [selectedTreeId, setSelectedTreeId] = useState(() => homeTreeOptions[0]?.id ?? '');
+  const [ownedTreeIds, setOwnedTreeIds] = useState<string[]>(() => (homeTreeOptions[0] ? [homeTreeOptions[0].id] : []));
   const [selectedProfileBackgroundId, setSelectedProfileBackgroundId] = useState(() => profileBackgroundOptions[0]?.id ?? '');
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>({
@@ -315,9 +408,15 @@ function GameApp() {
       setPassiveIncome((current) => current + boost);
     }
     if (kind === 'luck') {
-      setNftDropChance((current) => current + boost);
+      setNftDropChance((current) => Number((current + boost).toFixed(1)));
     }
     setUpgradeLevels((current) => ({ ...current, [id]: current[id] + 1 }));
+  };
+
+  const buyTree = (id: string, price: number) => {
+    if (ownedTreeIds.includes(id) || balance < price) return;
+    setBalance((current) => current - price);
+    setOwnedTreeIds((current) => [...current, id]);
   };
 
   const handleToggleListing = (name: string) => {
@@ -455,10 +554,12 @@ function GameApp() {
                 comboLimit={comboCycleLength}
                 selectedTree={homeTreeOptions.find((tree) => tree.id === selectedTreeId) ?? homeTreeOptions[0]}
                 treeOptions={homeTreeOptions}
+                ownedTreeIds={ownedTreeIds}
                 upgradeLevels={upgradeLevels}
                 walletState={walletState}
                 onTap={tapCoin}
                 onSelectTree={setSelectedTreeId}
+                onBuyTree={buyTree}
                 onBuyUpgrade={buyUpgrade}
               />
             }
@@ -505,10 +606,12 @@ function HomePage({
   comboLimit,
   selectedTree,
   treeOptions,
+  ownedTreeIds,
   upgradeLevels,
   walletState,
   onTap,
   onSelectTree,
+  onBuyTree,
   onBuyUpgrade,
 }: {
   balance: number;
@@ -517,12 +620,14 @@ function HomePage({
   nftDropChance: number;
   combo: number;
   comboLimit: number;
-  selectedTree?: { id: string; name: string; image: string };
-  treeOptions: { id: string; name: string; image: string }[];
+  selectedTree?: PickerOption;
+  treeOptions: PickerOption[];
+  ownedTreeIds: string[];
   upgradeLevels: Record<UpgradeId, number>;
   walletState: WalletUiState;
   onTap: () => void;
   onSelectTree: (id: string) => void;
+  onBuyTree: (id: string, price: number) => void;
   onBuyUpgrade: (id: UpgradeId, price: number, boost: number, kind: UpgradeKind) => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -576,13 +681,13 @@ function HomePage({
         <div className="mt-4 grid grid-cols-2 gap-3">
           <HomeStat label="Tap gucu" value={`+${tapPower}`} />
           <HomeStat label="Pasif/saat" value={formatNumber(passiveIncome)} />
-          <HomeStat label="NFT sansi" value={`%${nftDropChance}`} />
+          <HomeStat label="NFT sansi" value={`%${formatPercent(nftDropChance)}`} />
           <HomeStat label="Bakiye" value={`${formatNumber(balance)} NEAF`} />
         </div>
         <div className="mt-4 space-y-3.5">
           {upgrades.map(({ id, name, description, price, boost, bonus, kind, icon: Icon }) => {
             const level = upgradeLevels[id];
-            const currentPrice = Math.round(price * 1.45 ** level);
+            const currentPrice = calculateUpgradePrice(price, level);
             return (
               <button
                 key={name}
@@ -620,7 +725,10 @@ function HomePage({
           subtitle="Ana ekran ayarlari"
           selectedTreeId={selectedTree?.id ?? ''}
           options={treeOptions}
+          balance={balance}
+          ownedOptionIds={ownedTreeIds}
           onClose={() => setSettingsOpen(false)}
+          onPurchase={onBuyTree}
           onSelect={(id) => {
             onSelectTree(id);
             setSettingsOpen(false);
@@ -648,14 +756,7 @@ function MuseumPage() {
               className="group cursor-pointer rounded-[1.75rem] border border-surface bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-aurora-mid/30 hover:shadow-lg"
               onClick={() => setSelectedNft(nft)}
             >
-              <div className={`grid aspect-square place-items-center overflow-hidden rounded-[1.25rem] bg-gradient-to-br ${nft.tone}`}>
-                <img
-                  className="h-full w-full object-contain p-4 transition duration-500 group-hover:scale-[1.03]"
-                  src={nft.image}
-                  alt={`${nft.name} NFT gorseli`}
-                  loading="lazy"
-                />
-              </div>
+              <NftArtwork nft={nft} className="aspect-square rounded-[1.25rem]" imageClassName="p-4 group-hover:scale-[1.03]" />
               <div className="mt-5 flex items-center justify-between gap-3">
                 <h3 className="font-nft text-2xl text-text-primary">{nft.name}</h3>
                 <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
@@ -780,9 +881,11 @@ function MarketPage({
                 type="button"
                 onClick={() => setSelectedNft(nft)}
               >
-                <div className={`relative grid ${isCompactGrid ? 'aspect-auto h-full min-h-[220px]' : 'aspect-square'} place-items-center overflow-hidden bg-gradient-to-br ${nft.tone}`}>
-                  <img className="h-full w-full object-cover" src={nft.image} alt={`${nft.name} NFT gorseli`} loading="lazy" />
-                </div>
+                <NftArtwork
+                  nft={nft}
+                  className={`${isCompactGrid ? 'aspect-auto h-full min-h-[220px]' : 'aspect-square'}`}
+                  imageClassName="p-4"
+                />
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -846,9 +949,7 @@ function MuseumDetailModal({
         </div>
 
         <div className="mt-6 grid gap-6 md:grid-cols-[0.95fr_1.05fr] md:items-start">
-          <div className={`grid aspect-square place-items-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br ${nft.tone}`}>
-            <img className="h-full w-full object-contain p-6" src={nft.image} alt={`${nft.name} NFT gorseli`} />
-          </div>
+          <NftArtwork nft={nft} className="aspect-square rounded-[1.75rem]" imageClassName="p-6" />
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</span>
@@ -896,9 +997,7 @@ function MarketDetailModal({
           </button>
         </div>
         <div className="grid gap-6 p-6 md:grid-cols-[0.95fr_1.05fr] md:items-start md:p-8">
-          <div className={`grid aspect-square place-items-center overflow-hidden rounded-[1.5rem] bg-gradient-to-br ${nft.tone}`}>
-            <img className="h-full w-full object-contain p-6" src={nft.image} alt={`${nft.name} NFT gorseli`} />
-          </div>
+          <NftArtwork nft={nft} className="aspect-square rounded-[1.5rem]" imageClassName="p-6" />
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</span>
@@ -1095,15 +1194,21 @@ function AssetPickerModal({
   selectedTreeId,
   options,
   imageClassName = 'object-contain',
+  balance,
+  ownedOptionIds,
   onClose,
+  onPurchase,
   onSelect,
 }: {
   title: string;
   subtitle: string;
   selectedTreeId: string;
-  options: { id: string; name: string; image: string }[];
+  options: PickerOption[];
   imageClassName?: string;
+  balance?: number;
+  ownedOptionIds?: string[];
   onClose: () => void;
+  onPurchase?: (id: string, price: number) => void;
   onSelect: (id: string) => void;
 }) {
   const [draftId, setDraftId] = useState(selectedTreeId);
@@ -1112,6 +1217,10 @@ function AssetPickerModal({
   const current = options[selectedIndex] ?? options[0];
   const previous = options[(selectedIndex - 1 + options.length) % options.length];
   const next = options[(selectedIndex + 1) % options.length];
+  const ownedIds = ownedOptionIds ?? options.map((item) => item.id);
+  const isOwned = ownedIds.includes(current.id);
+  const canAfford = balance === undefined || (current.price ?? 0) <= balance;
+  const isSelected = current.id === selectedTreeId;
 
   const content = (
     <div className="fixed inset-0 z-50 grid place-items-center bg-text-primary/25 px-4 backdrop-blur-sm" onClick={onClose}>
@@ -1145,7 +1254,15 @@ function AssetPickerModal({
                 <img className={`h-full max-h-72 w-full ${imageClassName}`} src={current.image} alt={current.name} />
               </div>
               <div className="flex items-center justify-between gap-3 px-5 py-4">
-                <span className="font-soft text-3xl text-text-primary">{current.name}</span>
+                <div>
+                  <span className="font-soft text-3xl text-text-primary">{current.name}</span>
+                  {!isOwned && (current.price ?? 0) > 0 ? (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-surface bg-deep px-3 py-1">
+                      <img className="h-4 w-4 object-contain" src={neafIcon} alt="" aria-hidden="true" />
+                      <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">{formatNumber(current.price ?? 0)} NEAF</span>
+                    </div>
+                  ) : null}
+                </div>
                 <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
                   {selectedIndex + 1}/{options.length}
                 </span>
@@ -1172,13 +1289,25 @@ function AssetPickerModal({
             ))}
           </div>
           <div className="flex justify-center">
-            <button
-              className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start"
-              type="button"
-              onClick={() => onSelect(current.id)}
-            >
-              Sec
-            </button>
+            {isOwned ? (
+              <button
+                className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start"
+                type="button"
+                onClick={() => onSelect(current.id)}
+              >
+                {isSelected ? 'Secili' : 'Sec'}
+              </button>
+            ) : (
+              <button
+                className="inline-flex items-center gap-2 rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-55"
+                type="button"
+                disabled={!canAfford}
+                onClick={() => onPurchase?.(current.id, current.price ?? 0)}
+              >
+                <img className="h-4 w-4 object-contain" src={neafIcon} alt="" aria-hidden="true" />
+                {formatNumber(current.price ?? 0)} NEAF
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
