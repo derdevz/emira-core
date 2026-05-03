@@ -41,8 +41,8 @@ jobs:
       - name: Install dependencies
         run: npm install --include=optional
 
-      - name: Install Rollup Linux native package
-        run: npm install @rollup/rollup-linux-x64-gnu --no-save
+      - name: Install Linux native optional packages
+        run: npm install @rollup/rollup-linux-x64-gnu lightningcss-linux-x64-gnu --no-save
 
       - name: Build
         env:
