@@ -1,4 +1,17 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: emira-postgres
+    environment:
+      POSTGRES_DB: emira_core
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     image: node:20-alpine
     container_name: emira-backend
@@ -13,7 +26,11 @@ services:
       STELLAR_NETWORK: testnet
       SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      POSTGRES_URL: postgres://postgres:postgres@postgres:5432/emira_core
     restart: unless-stopped
+    depends_on:
+      - postgres
 
   frontend:
     build:
@@ -34,3 +51,6 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+
+volumes:
+  postgres_data:

@@ -7,6 +7,7 @@ export type WalletConnection = {
   sorobanRpcUrl?: string;
   provider: WalletProvider;
   surface: 'web' | 'telegram';
+  walletKitAddress?: string;
 };
 
 export type WalletInspectionState =

@@ -10,6 +10,7 @@ artifacts for the final Rise In delivery.
 - Lightweight hybrid backend scaffold for profiles, leaderboards, tap validation, and chain-preparation APIs.
 - Wallet abstraction scaffold for Freighter-first web and future WalletConnect Telegram/mobile flows.
 - Telegram auth, session-token, and wallet-link backend scaffold.
+- Optional PostgreSQL-backed persistence with file fallback for local development.
 - Freighter wallet detection, connect flow, wallet menu, address copy, switch, and local disconnect actions.
 - Soroban smart contract scaffold for reward and player progress snapshots.
 - Soroban marketplace contract scaffold for XLM-based Stellar market flows.
@@ -41,6 +42,7 @@ docs/
   submission/            Submission checklist and transaction hash placeholder
 backend/
   src/                   Lightweight hybrid API scaffold
+  data/                  File fallback runtime state
   package.json           Backend scripts
 contracts/
   emira_marketplace/     Soroban smart contract scaffold for marketplace state
@@ -88,6 +90,9 @@ Open:
 ```text
 http://localhost:5173
 ```
+
+When `POSTGRES_URL` is configured, the backend persists players, sessions, wallet links, listings, and progress in
+PostgreSQL. Without it, the backend falls back to `backend/data/runtime-state.json`.
 
 ## Soroban Contract
 
@@ -140,6 +145,7 @@ Key backend variables:
 - `TELEGRAM_BOT_USERNAME`: Telegram bot username used by the Mini App
 - `TELEGRAM_WEBAPP_URL`: Telegram Mini App URL
 - `WALLETCONNECT_PROJECT_ID`: WalletConnect project id for mobile / Telegram signing
+- `TELEGRAM_BOT_TOKEN`: Telegram WebApp validation token
 - `SESSION_JWT_SECRET`: backend session signing secret
 - `POSTGRES_URL`: persistent database connection string
 

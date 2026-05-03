@@ -30,6 +30,34 @@ export async function fetchMarketListings() {
   return request('/api/v1/market/listings');
 }
 
+export async function recordTap(playerId: string) {
+  return request('/api/v1/progress/tap', {
+    method: 'POST',
+    body: JSON.stringify({ playerId }),
+  });
+}
+
+export async function prepareMarketListing(input: {
+  tokenId: number;
+  ownerAddress: string;
+  priceXlm: number;
+  name: string;
+  rarity: string;
+  provider: string;
+}) {
+  return request('/api/v1/market/prepare-list', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function prepareMarketCancel(tokenId: number) {
+  return request('/api/v1/market/prepare-cancel', {
+    method: 'POST',
+    body: JSON.stringify({ tokenId }),
+  });
+}
+
 export async function authenticateTelegram(initData: string) {
   return request('/api/v1/auth/telegram', {
     method: 'POST',

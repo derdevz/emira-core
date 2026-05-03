@@ -1,4 +1,3 @@
-import { signTransaction } from '@stellar/freighter-api';
 import { Asset, BASE_FEE, Horizon, Memo, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import type { WalletConnection } from './freighter';
 
@@ -55,7 +54,32 @@ export async function signAndSubmitMarketPayment({
     .setTimeout(180)
     .build();
 
-  const signed = await signTransaction(transaction.toXDR(), {
+  const signedTxXdr = await signMarketTransaction(wallet, transaction.toXDR());
+  const signedTransaction = TransactionBuilder.fromXDR(signedTxXdr, wallet.networkPassphrase);
+  const response = await server.submitTransaction(signedTransaction);
+
+  return {
+    hash: response.hash,
+    recipient,
+    amount: sanitizeAmount(amountXlm),
+  };
+}
+
+async function signMarketTransaction(wallet: WalletConnection, xdr: string) {
+  if (wallet.provider === 'walletconnect') {
+    const { StellarWalletsKit } = await import('@creit.tech/stellar-wallets-kit');
+    const signed = await StellarWalletsKit.signTransaction(xdr, {
+      address: wallet.address,
+      networkPassphrase: wallet.networkPassphrase,
+    });
+    if (!signed?.signedTxXdr) {
+      throw new Error('WalletConnect imzali islem dondurmedi.');
+    }
+    return signed.signedTxXdr;
+  }
+
+  const { signTransaction } = await import('@stellar/freighter-api');
+  const signed = await signTransaction(xdr, {
     address: wallet.address,
     networkPassphrase: wallet.networkPassphrase,
   });
@@ -69,12 +93,5 @@ export async function signAndSubmitMarketPayment({
     throw new Error('Freighter imzali islem dondurmedi.');
   }
 
-  const signedTransaction = TransactionBuilder.fromXDR(signed.signedTxXdr, wallet.networkPassphrase);
-  const response = await server.submitTransaction(signedTransaction);
-
-  return {
-    hash: response.hash,
-    recipient,
-    amount: sanitizeAmount(amountXlm),
-  };
+  return signed.signedTxXdr;
 }

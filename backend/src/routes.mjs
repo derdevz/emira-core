@@ -1,5 +1,17 @@
-import { createOpaqueId, createSessionToken, parseTelegramInitData, verifySessionToken } from './auth.mjs';
-import { ensureTelegramPlayer, findPlayer, listings, playerProgress, players, sessionStore, walletLinks } from './data.mjs';
+import { createOpaqueId, createSessionToken, parseTelegramInitData, verifySessionToken, verifyTelegramInitData } from './auth.mjs';
+import {
+  ensureTelegramPlayer,
+  findListingByTokenId,
+  findPlayer,
+  listings,
+  playerProgress,
+  players,
+  persistRuntimeState,
+  removeListingByTokenId,
+  sessionStore,
+  upsertListing,
+  walletLinks,
+} from './data.mjs';
 
 function json(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -50,7 +62,7 @@ export async function handleRoute(request, response, config) {
   }
 
   if (request.method === 'GET' && url.pathname === '/health') {
-    json(response, 200, { ok: true, service: 'emira-backend', mode: 'hybrid' });
+    json(response, 200, { ok: true, service: 'emira-backend', mode: 'hybrid', storage: config.storageMode });
     return;
   }
 
@@ -87,17 +99,21 @@ export async function handleRoute(request, response, config) {
       walletConnect: {
         projectIdConfigured: Boolean(config.walletConnectProjectId),
       },
+      storage: config.storageMode,
     });
     return;
   }
 
   if (request.method === 'POST' && url.pathname === '/api/v1/auth/telegram') {
     const body = await readBody(request).catch(() => null);
-    const telegramUser = parseTelegramInitData(body?.initData) ?? (body?.telegramUser && typeof body.telegramUser === 'object' ? body.telegramUser : null);
+    const telegramUser =
+      verifyTelegramInitData(body?.initData, config.telegramBotToken) ??
+      parseTelegramInitData(body?.initData) ??
+      (body?.telegramUser && typeof body.telegramUser === 'object' ? body.telegramUser : null);
     if (!telegramUser || !telegramUser.id) {
       json(response, 400, {
         error: 'telegram initData or telegramUser required',
-        hint: 'Use mock:<username> during local development until full Telegram signature validation is added.',
+        hint: 'Use mock:<username> during local development or provide a valid Telegram initData + TELEGRAM_BOT_TOKEN.',
       });
       return;
     }
@@ -115,6 +131,7 @@ export async function handleRoute(request, response, config) {
     };
     const token = createSessionToken(sessionRecord, config.sessionJwtSecret);
     sessionStore.set(sessionId, sessionRecord);
+    persistRuntimeState();
 
     json(response, 200, {
       ok: true,
@@ -217,13 +234,21 @@ export async function handleRoute(request, response, config) {
       return;
     }
 
+    const nextCombo = current.combo >= 25 ? 1 : current.combo + 1;
+    const gain = current.tapPower * current.combo;
     const next = {
       ...current,
-      combo: current.combo >= 25 ? 1 : current.combo + 1,
-      balanceNeaf: current.balanceNeaf + current.tapPower * current.combo,
+      combo: nextCombo,
+      balanceNeaf: current.balanceNeaf + gain,
     };
     playerProgress.set(body.playerId, next);
-    json(response, 200, { ok: true, progress: next });
+    const player = findPlayer(body.playerId);
+    if (player) {
+      player.taps += 1;
+      player.balanceNeaf = next.balanceNeaf;
+    }
+    persistRuntimeState();
+    json(response, 200, { ok: true, progress: next, gain });
     return;
   }
 
@@ -234,7 +259,7 @@ export async function handleRoute(request, response, config) {
       return;
     }
 
-    const listing = listings.find((item) => item.tokenId === body.tokenId);
+    const listing = findListingByTokenId(body.tokenId);
     if (!listing) {
       notFound(response);
       return;
@@ -252,6 +277,74 @@ export async function handleRoute(request, response, config) {
       soroban: {
         contractId: config.marketContractId,
         nextAction: 'sign with Freighter then submit to Stellar',
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/market/prepare-list') {
+    const body = await readBody(request).catch(() => null);
+    if (
+      !body ||
+      typeof body.tokenId !== 'number' ||
+      typeof body.ownerAddress !== 'string' ||
+      typeof body.priceXlm !== 'number' ||
+      typeof body.name !== 'string' ||
+      typeof body.rarity !== 'string'
+    ) {
+      json(response, 400, { error: 'tokenId, ownerAddress, priceXlm, name and rarity required' });
+      return;
+    }
+
+    const listing = upsertListing({
+      tokenId: body.tokenId,
+      name: body.name,
+      rarity: body.rarity,
+      owner: body.ownerAddress,
+      priceXlm: body.priceXlm,
+      settlement: 'XLM',
+      network: 'Stellar',
+      requiresFreighter: body.provider !== 'walletconnect',
+    });
+    persistRuntimeState();
+
+    json(response, 200, {
+      ok: true,
+      mode: 'wallet-sign-required',
+      settlement: 'XLM',
+      listing,
+      memoText: `EMIRA-LIST-${listing.tokenId}`,
+      soroban: {
+        contractId: config.marketContractId,
+        nextAction: 'sign listing approval and submit to Stellar',
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/market/prepare-cancel') {
+    const body = await readBody(request).catch(() => null);
+    if (!body || typeof body.tokenId !== 'number') {
+      json(response, 400, { error: 'tokenId required' });
+      return;
+    }
+
+    const removed = removeListingByTokenId(body.tokenId);
+    if (!removed) {
+      notFound(response);
+      return;
+    }
+    persistRuntimeState();
+
+    json(response, 200, {
+      ok: true,
+      mode: 'wallet-sign-required',
+      settlement: 'XLM',
+      removed,
+      memoText: `EMIRA-CANCEL-${removed.tokenId}`,
+      soroban: {
+        contractId: config.marketContractId,
+        nextAction: 'sign cancel approval and submit to Stellar',
       },
     });
     return;
@@ -296,6 +389,7 @@ export async function handleRoute(request, response, config) {
       network: config.stellarNetwork,
     };
     walletLinks.set(player.id, walletLink);
+    persistRuntimeState();
 
     json(response, 200, {
       ok: true,

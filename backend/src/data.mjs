@@ -1,4 +1,7 @@
-export const players = [
+import { loadPostgresState, postgresEnabled, savePostgresState } from './db.mjs';
+import { loadRuntimeState, saveRuntimeState } from './store.mjs';
+
+const defaultPlayers = [
   {
     id: 'emira_player',
     username: '@emira_player',
@@ -31,7 +34,7 @@ export const players = [
   },
 ];
 
-export const listings = [
+const defaultListings = [
   {
     tokenId: 4200,
     name: 'Açık Kahve Kedi',
@@ -54,32 +57,85 @@ export const listings = [
   },
 ];
 
+const fallbackState = {
+  players: defaultPlayers,
+  listings: defaultListings,
+  walletLinks: defaultPlayers
+    .filter((player) => player.walletAddress)
+    .map((player) => ({
+      playerId: player.id,
+      address: player.walletAddress,
+      provider: 'freighter',
+      linkedAt: new Date().toISOString(),
+    })),
+  sessions: [],
+  playerProgress: defaultPlayers.map((player) => ({
+    playerId: player.id,
+    tapPower: player.id === 'emira_player' ? 1 : 6,
+    passiveIncome: player.id === 'emira_player' ? 120 : 220,
+    combo: 1,
+    balanceNeaf: player.balanceNeaf,
+    })),
+};
+
+const runtimeState = (await loadPostgresState()) ?? loadRuntimeState(fallbackState);
+
+export const players = runtimeState.players;
+export const listings = runtimeState.listings;
+
+export function findListingByTokenId(tokenId) {
+  return listings.find((item) => item.tokenId === tokenId) ?? null;
+}
+
+export function removeListingByTokenId(tokenId) {
+  const index = listings.findIndex((item) => item.tokenId === tokenId);
+  if (index === -1) return null;
+  const [listing] = listings.splice(index, 1);
+  return listing;
+}
+
+export function upsertListing(nextListing) {
+  const existingIndex = listings.findIndex((item) => item.tokenId === nextListing.tokenId);
+  if (existingIndex >= 0) {
+    listings.splice(existingIndex, 1, nextListing);
+  } else {
+    listings.push(nextListing);
+  }
+  return nextListing;
+}
+
 export const playerProgress = new Map(
-  players.map((player) => [
-    player.id,
+  runtimeState.playerProgress.map((progress) => [
+    progress.playerId,
     {
-      tapPower: player.id === 'emira_player' ? 1 : 6,
-      passiveIncome: player.id === 'emira_player' ? 120 : 220,
-      combo: 1,
-      balanceNeaf: player.balanceNeaf,
+      tapPower: progress.tapPower,
+      passiveIncome: progress.passiveIncome,
+      combo: progress.combo,
+      balanceNeaf: progress.balanceNeaf,
     },
   ]),
 );
 
-export const sessionStore = new Map();
-export const walletLinks = new Map(
-  players
-    .filter((player) => player.walletAddress)
-    .map((player) => [
-      player.id,
-      {
-        playerId: player.id,
-        address: player.walletAddress,
-        provider: 'freighter',
-        linkedAt: new Date().toISOString(),
-      },
-    ]),
-);
+export const sessionStore = new Map((runtimeState.sessions ?? []).map((session) => [session.sid, session]));
+export const walletLinks = new Map((runtimeState.walletLinks ?? []).map((item) => [item.playerId, item]));
+
+export function persistRuntimeState() {
+  const snapshot = {
+    players,
+    listings,
+    walletLinks: [...walletLinks.values()],
+    sessions: [...sessionStore.values()],
+    playerProgress: [...playerProgress.entries()].map(([playerId, progress]) => ({
+      playerId,
+      ...progress,
+    })),
+  };
+
+  saveRuntimeState(snapshot);
+  if (postgresEnabled()) {
+    void savePostgresState(snapshot).catch(() => {});
+  }
+}
 
 function slugify(value) {
   return value
@@ -126,5 +182,6 @@ export function ensureTelegramPlayer(telegramUser) {
     combo: 1,
     balanceNeaf: next.balanceNeaf,
   });
+  persistRuntimeState();
   return next;
 }

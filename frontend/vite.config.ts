@@ -34,6 +34,20 @@ export default defineConfig(async () => {
   return {
     plugins,
     base: resolveBasePath(),
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('@stellar')) return 'stellar';
+            if (id.includes('react-router-dom')) return 'router';
+            if (id.includes('framer-motion')) return 'motion';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('react') || id.includes('scheduler')) return 'react-vendor';
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         '/api': {

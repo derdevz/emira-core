@@ -67,3 +67,42 @@ export function parseTelegramInitData(initData) {
     return null;
   }
 }
+
+function hmacSha256(key, value) {
+  return crypto.createHmac('sha256', key).update(value).digest();
+}
+
+export function verifyTelegramInitData(initData, botToken) {
+  if (!initData || typeof initData !== 'string' || !botToken) return null;
+
+  const params = new URLSearchParams(initData);
+  const hash = params.get('hash');
+  if (!hash) return null;
+
+  const dataCheckString = [...params.entries()]
+    .filter(([key]) => key !== 'hash')
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
+
+  const secretKey = hmacSha256('WebAppData', botToken);
+  const signature = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+
+  if (signature !== hash) return null;
+
+  const rawUser = params.get('user');
+  if (!rawUser) return null;
+
+  try {
+    const user = JSON.parse(rawUser);
+    return {
+      id: user.id ? String(user.id) : undefined,
+      username: user.username,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      validationMode: 'telegram-hmac',
+    };
+  } catch {
+    return null;
+  }
+}

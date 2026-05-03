@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { postgresEnabled } from './db.mjs';
 import { handleRoute } from './routes.mjs';
 
 const port = Number(process.env.PORT ?? 8080);
@@ -10,9 +11,11 @@ const config = {
   marketplaceAddress: process.env.STELLAR_MARKETPLACE_ADDRESS ?? 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
   marketContractId: process.env.SOROBAN_MARKET_CONTRACT_ID ?? 'CDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? 'emira_test_bot',
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
   telegramWebAppUrl: process.env.TELEGRAM_WEBAPP_URL ?? 'https://example.com/telegram',
   walletConnectProjectId: process.env.WALLETCONNECT_PROJECT_ID ?? '',
   sessionJwtSecret: process.env.SESSION_JWT_SECRET ?? 'change-me',
+  storageMode: postgresEnabled() ? 'postgres' : 'file',
 };
 
 const server = http.createServer(async (request, response) => {

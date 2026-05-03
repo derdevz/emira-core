@@ -5,6 +5,7 @@ export type TelegramWebAppContext = {
   firstName?: string;
   lastName?: string;
   initData?: string;
+  startParam?: string;
 };
 
 declare global {
@@ -12,6 +13,8 @@ declare global {
     Telegram?: {
       WebApp?: {
         initData?: string;
+        ready?: () => void;
+        expand?: () => void;
         initDataUnsafe?: {
           user?: {
             id?: number;
@@ -19,6 +22,7 @@ declare global {
             first_name?: string;
             last_name?: string;
           };
+          start_param?: string;
         };
       };
     };
@@ -32,6 +36,7 @@ export function readTelegramWebAppContext(): TelegramWebAppContext {
   return {
     isTelegram: Boolean(webApp),
     initData: webApp?.initData,
+    startParam: webApp?.initDataUnsafe?.start_param,
     userId: user?.id ? String(user.id) : undefined,
     username: user?.username,
     firstName: user?.first_name,
@@ -41,4 +46,17 @@ export function readTelegramWebAppContext(): TelegramWebAppContext {
 
 export function isTelegramSurface() {
   return readTelegramWebAppContext().isTelegram;
+}
+
+export function prepareTelegramWebApp() {
+  const webApp = window.Telegram?.WebApp;
+  webApp?.ready?.();
+  webApp?.expand?.();
+}
+
+export function buildTelegramMiniAppUrl() {
+  const username = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
+  const startParam = import.meta.env.VITE_TELEGRAM_STARTAPP ?? 'emira-core';
+  if (!username) return null;
+  return `https://t.me/${username}?startapp=${encodeURIComponent(startParam)}`;
 }

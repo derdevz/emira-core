@@ -24,10 +24,20 @@ import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocatio
 import neafIcon from './assets/neaf.png';
 import ovaBackground from './assets/ova.jpg';
 import { useLeafSystem } from './hooks/useLeafSystem';
-import { authenticateTelegram, fetchLeaderboard, fetchMarketListings, fetchProfile, fetchSession, linkWallet } from './lib/apiClient';
+import {
+  authenticateTelegram,
+  fetchAppConfig,
+  fetchLeaderboard,
+  fetchMarketListings,
+  fetchProfile,
+  fetchSession,
+  linkWallet,
+  prepareMarketCancel,
+  prepareMarketListing,
+  recordTap,
+} from './lib/apiClient';
 import { connectPrimaryWallet, inspectPrimaryWallet, type WalletConnection } from './lib/wallet';
-import { readTelegramWebAppContext } from './lib/wallet/telegram';
-import { isMarketplaceConfigured, resolveMarketplaceAddress, signAndSubmitMarketPayment } from './lib/stellarMarket';
+import { buildTelegramMiniAppUrl, prepareTelegramWebApp, readTelegramWebAppContext } from './lib/wallet/telegram';
 
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
 type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
@@ -70,6 +80,7 @@ type ProfileRecord = {
 
 const freighterInstallUrl = 'https://www.freighter.app/';
 const promoSiteUrl = import.meta.env.VITE_PROMO_SITE_URL ?? 'https://sopwit.github.io/Neaf-Web/';
+const configuredMarketplaceAddress = import.meta.env.VITE_STELLAR_MARKETPLACE_ADDRESS ?? '';
 
 const navigation = [
   { name: 'Ana Sayfa', path: '/' },
@@ -533,6 +544,7 @@ function GameApp() {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
   const telegramContext = readTelegramWebAppContext();
+  const telegramLaunchUrl = buildTelegramMiniAppUrl();
   const [isOpen, setIsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [balance, setBalance] = useState(128450);
@@ -562,7 +574,21 @@ function GameApp() {
   const [currentPlayer, setCurrentPlayer] = useState<ProfileRecord | null>(null);
   const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
   const [marketListings, setMarketListings] = useState<MarketListing[]>([]);
+  const [walletSupport, setWalletSupport] = useState<{ telegram: string[]; web: string[] } | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
+
+  const reloadLeaderboard = () =>
+    fetchLeaderboard('taps')
+      .then((payload) => {
+        setRemoteLeaderboard(payload.items ?? []);
+      })
+      .catch(() => {});
+
+  useEffect(() => {
+    if (telegramContext.isTelegram) {
+      prepareTelegramWebApp();
+    }
+  }, [telegramContext.isTelegram]);
 
   useEffect(() => {
     inspectPrimaryWallet()
@@ -586,6 +612,12 @@ function GameApp() {
   }, []);
 
   useEffect(() => {
+    fetchAppConfig()
+      .then((payload) => {
+        setWalletSupport(payload.wallets ?? null);
+      })
+      .catch(() => {});
+
     fetchMarketListings()
       .then((payload) => {
         setMarketListings(payload.items ?? []);
@@ -593,11 +625,7 @@ function GameApp() {
       })
       .catch(() => {});
 
-    fetchLeaderboard('taps')
-      .then((payload) => {
-        setRemoteLeaderboard(payload.items ?? []);
-      })
-      .catch(() => {});
+    void reloadLeaderboard();
   }, []);
 
   useEffect(() => {
@@ -633,6 +661,7 @@ function GameApp() {
         setTelegramSessionToken(token);
         setCurrentPlayer(payload.player ?? null);
         setTelegramMessage(`Telegram oturumu aktif: ${payload.player?.username ?? '@guest'}`);
+        void reloadLeaderboard();
       })
       .catch((error) => {
         setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
@@ -688,6 +717,7 @@ function GameApp() {
       setTelegramSessionToken(token);
       setCurrentPlayer(payload.player ?? null);
       setTelegramMessage(`Telegram oturumu aktif: ${payload.player?.username ?? '@guest'}`);
+      void reloadLeaderboard();
     } catch (error) {
       setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
     }
@@ -704,6 +734,24 @@ function GameApp() {
     const gain = tapPower * combo;
     setBalance((current) => current + gain);
     setCombo((current) => (current >= comboCycleLength ? 1 : current + 1));
+
+    const playerId = currentPlayer?.id ?? 'emira_player';
+    void recordTap(playerId)
+      .then((payload) => {
+        if (!payload?.progress) return;
+        setRemoteLeaderboard((current) =>
+          current.map((player) =>
+            player.id === playerId
+              ? {
+                  ...player,
+                  taps: player.taps + 1,
+                  balanceNeaf: payload.progress.balanceNeaf,
+                }
+              : player,
+          ),
+        );
+      })
+      .catch(() => {});
   };
 
   const buyUpgrade = (id: UpgradeId, price: number, boost: number, kind: UpgradeKind) => {
@@ -733,10 +781,34 @@ function GameApp() {
     setOwnedProfileBackgroundIds((current) => [...current, id]);
   };
 
-  const handleToggleListing = (name: string) => {
+  const handleToggleListing = async (name: string) => {
     const nft = nftCollection.find((item) => item.name === name);
-    if (!nft || !owned.includes(name)) return;
-    setListedNftNames((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
+    if (!nft || !owned.includes(name)) return { ok: false };
+
+    if (listedNftNames.includes(name)) {
+      const payload = await prepareMarketCancel(nft.tokenId);
+      setListedNftNames((current) => current.filter((item) => item !== name));
+      setMarketListings((current) => current.filter((item) => item.tokenId !== nft.tokenId));
+      return payload;
+    }
+
+    const ownerAddress = wallet?.address ?? currentPlayer?.walletAddress ?? 'PENDING_OWNER';
+    const payload = await prepareMarketListing({
+      tokenId: nft.tokenId,
+      ownerAddress,
+      priceXlm: nft.price,
+      name: nft.name,
+      rarity: nft.rarity,
+      provider: wallet?.provider ?? 'freighter',
+    });
+    setListedNftNames((current) => [...new Set([...current, name])]);
+    if (payload?.listing) {
+      setMarketListings((current) => {
+        const next = current.filter((item) => item.tokenId !== payload.listing.tokenId);
+        return [...next, payload.listing];
+      });
+    }
+    return payload;
   };
 
   const handlePurchaseNft = async (nft: NftItem) => {
@@ -744,11 +816,12 @@ function GameApp() {
       throw new Error('XLM ile satin alma icin Stellar cuzdan baglantisi gerekli.');
     }
 
-    const receipt = await signAndSubmitMarketPayment({
+    const market = await import('./lib/stellarMarket');
+    const receipt = await market.signAndSubmitMarketPayment({
       wallet,
       amountXlm: nft.price,
       memoText: `EMIRA-${nft.tokenId}`,
-      destinationAddress: resolveMarketplaceAddress(wallet),
+      destinationAddress: market.resolveMarketplaceAddress(wallet),
     });
 
     setOwned((current) => (current.includes(nft.name) ? current : [...current, nft.name]));
@@ -809,6 +882,13 @@ function GameApp() {
       }),
     [balance, currentPlayer, owned.length, profileAvatar, remoteLeaderboard, tapPower],
   );
+
+  const walletInstallLabel = useMemo(() => {
+    if (telegramContext.isTelegram) {
+      return walletSupport?.telegram?.includes('walletconnect') ? 'WalletConnect hazir' : 'Telegram cüzdani hazirlaniyor';
+    }
+    return 'Freighter kur';
+  }, [telegramContext.isTelegram, walletSupport]);
 
   return (
     <div className={`relative overflow-x-hidden bg-void text-text-primary ${isHomePage ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
@@ -873,6 +953,16 @@ function GameApp() {
                 open={walletMenuOpen}
                 onOpenChange={setWalletMenuOpen}
               />
+              {!telegramContext.isTelegram && telegramLaunchUrl ? (
+                <a
+                  className="rounded-full border border-surface bg-white px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                  href={telegramLaunchUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Telegram Ac
+                </a>
+              ) : null}
             </div>
           </div>
 
@@ -908,6 +998,16 @@ function GameApp() {
               >
                 Neaf Web
               </a>
+              {!telegramContext.isTelegram && telegramLaunchUrl ? (
+                <a
+                  className="font-mono text-sm uppercase tracking-[0.18em] text-text-secondary hover:text-text-primary"
+                  href={telegramLaunchUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Telegram Ac
+                </a>
+              ) : null}
               {walletState === 'missing' ? (
                 <a
                   className="inline-flex w-fit rounded-full border border-aurora-mid/20 bg-aurora-mid px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-white"
@@ -968,6 +1068,9 @@ function GameApp() {
                 listedNftNames={listedNftNames}
                 onToggleListing={handleToggleListing}
                 onPurchaseNft={handlePurchaseNft}
+                walletInstallLabel={walletInstallLabel}
+                isMarketplaceReady={Boolean(configuredMarketplaceAddress || wallet?.address)}
+                telegramLaunchUrl={telegramLaunchUrl}
               />
             }
           />
@@ -989,6 +1092,7 @@ function GameApp() {
                 telegramSessionToken={telegramSessionToken}
                 currentPlayer={currentPlayer}
                 onTelegramLogin={handleTelegramLogin}
+                telegramLaunchUrl={telegramLaunchUrl}
               />
             }
           />
@@ -1203,14 +1307,20 @@ function MarketPage({
   listedNftNames,
   onToggleListing,
   onPurchaseNft,
+  walletInstallLabel,
+  isMarketplaceReady,
+  telegramLaunchUrl,
 }: {
   marketItems: NftItem[];
   wallet: WalletConnection | null;
   walletState: WalletUiState;
   ownedNftNames: string[];
   listedNftNames: string[];
-  onToggleListing: (name: string) => void;
+  onToggleListing: (name: string) => Promise<unknown>;
   onPurchaseNft: (nft: NftItem) => Promise<{ hash: string; recipient: string; amount: string }>;
+  walletInstallLabel: string;
+  isMarketplaceReady: boolean;
+  telegramLaunchUrl: string | null;
 }) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1347,6 +1457,9 @@ function MarketPage({
               onToggleListing={onToggleListing}
               onPurchase={onPurchaseNft}
               onClose={() => setSelectedNft(null)}
+              walletInstallLabel={walletInstallLabel}
+              isMarketplaceReady={isMarketplaceReady}
+              telegramLaunchUrl={telegramLaunchUrl}
             />
           ) : null}
         </div>
@@ -1407,15 +1520,21 @@ function MarketDetailModal({
   onToggleListing,
   onPurchase,
   onClose,
+  walletInstallLabel,
+  isMarketplaceReady,
+  telegramLaunchUrl,
 }: {
   nft: NftItem;
   wallet: WalletConnection | null;
   walletState: WalletUiState;
   isOwned: boolean;
   isListed: boolean;
-  onToggleListing: (name: string) => void;
+  onToggleListing: (name: string) => Promise<unknown>;
   onPurchase: (nft: NftItem) => Promise<{ hash: string; recipient: string; amount: string }>;
   onClose: () => void;
+  walletInstallLabel: string;
+  isMarketplaceReady: boolean;
+  telegramLaunchUrl: string | null;
 }) {
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState('');
@@ -1470,11 +1589,23 @@ function MarketDetailModal({
                 <button
                   className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
-                  onClick={() => onToggleListing(nft.name)}
+                  disabled={submitState === 'submitting'}
+                  onClick={async () => {
+                    try {
+                      setSubmitState('submitting');
+                      setSubmitMessage(isListed ? 'Stellar liste kaydi kaldiriliyor.' : 'Stellar liste kaydi hazirlaniyor.');
+                      await onToggleListing(nft.name);
+                      setSubmitState('success');
+                      setSubmitMessage(isListed ? 'Liste kaydi kaldirildi.' : 'NFT XLM pazarina eklendi.');
+                    } catch (error) {
+                      setSubmitState('error');
+                      setSubmitMessage(error instanceof Error ? error.message : 'Pazar islemi basarisiz oldu.');
+                    }
+                  }}
                 >
                   {isListed ? 'Listeden kaldir' : 'XLM ile listele'}
                 </button>
-              ) : walletState === 'connected' && isMarketplaceConfigured(wallet) ? (
+              ) : walletState === 'connected' && isMarketplaceReady ? (
                 <button
                   className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
@@ -1495,7 +1626,19 @@ function MarketDetailModal({
                   {submitState === 'submitting' ? 'Imza bekleniyor' : 'XLM ile satin al'}
                 </button>
               ) : walletState !== 'connected' ? (
-                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Satin alma icin Stellar cuzdan baglanmali.</p>
+                <div className="space-y-2">
+                  <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Satin alma icin {walletInstallLabel.toLowerCase()}.</p>
+                  {telegramLaunchUrl ? (
+                    <a
+                      className="inline-flex rounded-full border border-surface bg-deep px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                      href={telegramLaunchUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Telegram Mini App ac
+                    </a>
+                  ) : null}
+                </div>
               ) : (
                 <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Pazar alici adresi ayarlanmamis. `VITE_STELLAR_MARKETPLACE_ADDRESS` gerekli.</p>
               )}
@@ -1524,6 +1667,7 @@ function ProfilePage({
   telegramSessionToken,
   currentPlayer,
   onTelegramLogin,
+  telegramLaunchUrl,
 }: {
   selectedBackground?: { id: string; name: string; image: string };
   backgroundOptions: PickerOption[];
@@ -1539,6 +1683,7 @@ function ProfilePage({
   telegramSessionToken: string | null;
   currentPlayer: ProfileRecord | null;
   onTelegramLogin: () => Promise<void>;
+  telegramLaunchUrl: string | null;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [remoteProfile, setRemoteProfile] = useState<ProfileRecord | null>(currentPlayer);
@@ -1582,15 +1727,27 @@ function ProfilePage({
               <Settings2 size={20} />
             </button>
             {!telegramSessionToken ? (
-              <button
-                className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
-                type="button"
-                onClick={() => {
-                  void onTelegramLogin();
-                }}
-              >
-                Telegram bagla
-              </button>
+              <>
+                <button
+                  className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                  type="button"
+                  onClick={() => {
+                    void onTelegramLogin();
+                  }}
+                >
+                  Telegram bagla
+                </button>
+                {telegramLaunchUrl ? (
+                  <a
+                    className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                    href={telegramLaunchUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Mini App ac
+                  </a>
+                ) : null}
+              </>
             ) : (
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-emerald-700">
                 Telegram aktif
