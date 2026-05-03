@@ -1,4 +1,3 @@
 [workspace]
-members = ["contracts/emira_rewards"]
+members = ["contracts/emira_rewards", "contracts/emira_marketplace"]
 resolver = "2"
-

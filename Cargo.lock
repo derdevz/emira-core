@@ -530,6 +530,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "emira_marketplace"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "emira_rewards"
 version = "0.1.0"
 dependencies = [

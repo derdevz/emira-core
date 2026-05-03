@@ -23,7 +23,9 @@ import {
 import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import neafIcon from './assets/neaf.png';
 import ovaBackground from './assets/ova.jpg';
+import { useLeafSystem } from './hooks/useLeafSystem';
 import { connectFreighter, inspectFreighter, type WalletConnection } from './lib/freighter';
+import { isMarketplaceConfigured, resolveMarketplaceAddress, signAndSubmitMarketPayment } from './lib/stellarMarket';
 
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
 type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
@@ -391,7 +393,7 @@ function GameApp() {
     'hourly-flow': 0,
     'nft-drop-lens': 0,
   });
-  const [owned] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
+  const [owned, setOwned] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
   const [listedNftNames, setListedNftNames] = useState<string[]>(() => nftCollection.filter((nft) => nft.listed).map((nft) => nft.name));
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
@@ -487,6 +489,23 @@ function GameApp() {
     const nft = nftCollection.find((item) => item.name === name);
     if (!nft || !owned.includes(name)) return;
     setListedNftNames((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
+  };
+
+  const handlePurchaseNft = async (nft: NftItem) => {
+    if (!wallet) {
+      throw new Error('XLM ile satin alma icin Freighter baglantisi gerekli.');
+    }
+
+    const receipt = await signAndSubmitMarketPayment({
+      wallet,
+      amountXlm: nft.price,
+      memoText: `EMIRA-${nft.tokenId}`,
+      destinationAddress: resolveMarketplaceAddress(wallet),
+    });
+
+    setOwned((current) => (current.includes(nft.name) ? current : [...current, nft.name]));
+    setListedNftNames((current) => current.filter((item) => item !== nft.name));
+    return receipt;
   };
 
   const leaderboardPlayers = useMemo(
@@ -633,9 +652,12 @@ function GameApp() {
             path="/market"
             element={
               <MarketPage
+                wallet={wallet}
+                walletState={walletState}
                 ownedNftNames={owned}
                 listedNftNames={listedNftNames}
                 onToggleListing={handleToggleListing}
+                onPurchaseNft={handlePurchaseNft}
               />
             }
           />
@@ -698,6 +720,20 @@ function HomePage({
   onBuyUpgrade: (id: UpgradeId, price: number, boost: number, kind: UpgradeKind) => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const treeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const { canvasRef, burst, resize } = useLeafSystem();
+
+  useEffect(() => {
+    const syncCanvas = () => {
+      const target = treeButtonRef.current;
+      if (!target) return;
+      resize(target.clientWidth, target.clientHeight);
+    };
+
+    syncCanvas();
+    window.addEventListener('resize', syncCanvas);
+    return () => window.removeEventListener('resize', syncCanvas);
+  }, [resize, selectedTree?.id]);
 
   return (
     <div className="mx-auto grid h-full max-w-7xl items-center gap-4 lg:grid-cols-[1fr_392px] lg:overflow-hidden">
@@ -714,12 +750,17 @@ function HomePage({
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="grid place-items-center select-none"
+          className="relative grid place-items-center select-none"
         >
           <button
-            className="tree-tap-button grid place-items-center select-none transition active:scale-[1.018]"
+            ref={treeButtonRef}
+            className="tree-tap-button relative grid place-items-center select-none transition active:scale-[1.018]"
             type="button"
-            onClick={onTap}
+            onClick={(event) => {
+              onTap();
+              const rect = event.currentTarget.getBoundingClientRect();
+              burst(event.clientX - rect.left, event.clientY - rect.top);
+            }}
             aria-label="NEAF kazanmak icin agaca tikla"
           >
             <img
@@ -728,6 +769,7 @@ function HomePage({
               alt="Emira agaci"
               draggable={false}
             />
+            <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
           </button>
           <div className="-mt-1 pointer-events-none rounded-full border border-surface bg-white/88 px-5 py-3 text-center shadow-sm backdrop-blur sm:-mt-3">
             <div className="flex items-center justify-center gap-2">
@@ -840,13 +882,19 @@ function MuseumPage() {
 }
 
 function MarketPage({
+  wallet,
+  walletState,
   ownedNftNames,
   listedNftNames,
   onToggleListing,
+  onPurchaseNft,
 }: {
+  wallet: WalletConnection | null;
+  walletState: WalletUiState;
   ownedNftNames: string[];
   listedNftNames: string[];
   onToggleListing: (name: string) => void;
+  onPurchaseNft: (nft: NftItem) => Promise<{ hash: string; recipient: string; amount: string }>;
 }) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -978,9 +1026,12 @@ function MarketPage({
           {selectedNft ? (
             <MarketDetailModal
               nft={selectedNft}
+              wallet={wallet}
+              walletState={walletState}
               isOwned={ownedNftNames.includes(selectedNft.name)}
               isListed={listedNftNames.includes(selectedNft.name)}
               onToggleListing={onToggleListing}
+              onPurchase={onPurchaseNft}
               onClose={() => setSelectedNft(null)}
             />
           ) : null}
@@ -1036,17 +1087,26 @@ function MuseumDetailModal({
 
 function MarketDetailModal({
   nft,
+  wallet,
+  walletState,
   isOwned,
   isListed,
   onToggleListing,
+  onPurchase,
   onClose,
 }: {
   nft: NftItem;
+  wallet: WalletConnection | null;
+  walletState: WalletUiState;
   isOwned: boolean;
   isListed: boolean;
   onToggleListing: (name: string) => void;
+  onPurchase: (nft: NftItem) => Promise<{ hash: string; recipient: string; amount: string }>;
   onClose: () => void;
 }) {
+  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [submitMessage, setSubmitMessage] = useState('');
+
   const content = (
     <div className="fixed inset-0 z-50 grid place-items-center bg-text-primary/25 px-4 backdrop-blur-sm" onClick={onClose}>
       <motion.div
@@ -1082,6 +1142,17 @@ function MarketDetailModal({
                 <p className="mt-2 text-sm text-text-secondary">{nft.moodTrait} · {nft.accessoryTrait}</p>
               </div>
             </div>
+            {submitMessage ? (
+              <div
+                className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
+                  submitState === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-600'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+              >
+                {submitMessage}
+              </div>
+            ) : null}
             <div className="mt-6">
               {isOwned ? (
                 <button
@@ -1091,8 +1162,30 @@ function MarketDetailModal({
                 >
                   {isListed ? 'Listeden kaldir' : 'XLM ile listele'}
                 </button>
+              ) : walletState === 'connected' && isMarketplaceConfigured(wallet) ? (
+                <button
+                  className="rounded-full border border-aurora-mid/20 bg-aurora-mid px-6 py-3 font-mono text-xs uppercase tracking-[0.18em] text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  disabled={submitState === 'submitting'}
+                  onClick={async () => {
+                    try {
+                      setSubmitState('submitting');
+                      setSubmitMessage('Freighter uzerinde XLM islemi imzalaniyor.');
+                      const receipt = await onPurchase(nft);
+                      setSubmitState('success');
+                      setSubmitMessage(`Islem gonderildi: ${receipt.hash}`);
+                    } catch (error) {
+                      setSubmitState('error');
+                      setSubmitMessage(error instanceof Error ? error.message : 'XLM islemi basarisiz oldu.');
+                    }
+                  }}
+                >
+                  {submitState === 'submitting' ? 'Imza bekleniyor' : 'XLM ile satin al'}
+                </button>
+              ) : walletState !== 'connected' ? (
+                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Satin alma icin Freighter baglanmali.</p>
               ) : (
-                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Bu NFT sana ait degil.</p>
+                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Pazar alici adresi ayarlanmamis. `VITE_STELLAR_MARKETPLACE_ADDRESS` gerekli.</p>
               )}
             </div>
           </div>
