@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Symbol, Vec,
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -14,6 +14,11 @@ const INITT: Symbol = symbol_short!("INITT");
 pub struct PlayerSnapshot {
     pub taps: u64,
     pub owned_nfts: u32,
+    pub balance_neaf: i128,
+    pub tap_upgrade: u32,
+    pub passive_upgrade: u32,
+    pub luck_upgrade: u32,
+    pub cat_pairs: Vec<u32>,
     pub total_claimed_reward: i128,
     pub claim_count: u32,
     pub last_updated_ledger: u32,
@@ -98,12 +103,54 @@ impl EmiraRewardsContract {
         let snapshot = PlayerSnapshot {
             taps,
             owned_nfts,
+            balance_neaf: previous.balance_neaf,
+            tap_upgrade: previous.tap_upgrade,
+            passive_upgrade: previous.passive_upgrade,
+            luck_upgrade: previous.luck_upgrade,
+            cat_pairs: previous.cat_pairs,
             total_claimed_reward: previous.total_claimed_reward,
             claim_count: previous.claim_count,
             last_updated_ledger: env.ledger().sequence(),
         };
         env.storage().persistent().set(&DataKey::Player(player.clone()), &snapshot);
         env.events().publish((symbol_short!("reward"), symbol_short!("prog")), (player, taps, owned_nfts));
+    }
+
+    pub fn record_game_state(
+        env: Env,
+        player: Address,
+        taps: u64,
+        balance_neaf: i128,
+        owned_nfts: u32,
+        tap_upgrade: u32,
+        passive_upgrade: u32,
+        luck_upgrade: u32,
+        cat_pairs: Vec<u32>,
+    ) {
+        player.require_auth();
+        Self::require_initialized(&env);
+        if balance_neaf < 0 {
+            panic_with_error!(&env, RewardsError::InvalidAmount);
+        }
+
+        let previous = Self::get_snapshot(env.clone(), player.clone());
+        let snapshot = PlayerSnapshot {
+            taps,
+            owned_nfts,
+            balance_neaf,
+            tap_upgrade,
+            passive_upgrade,
+            luck_upgrade,
+            cat_pairs: cat_pairs.clone(),
+            total_claimed_reward: previous.total_claimed_reward,
+            claim_count: previous.claim_count,
+            last_updated_ledger: env.ledger().sequence(),
+        };
+        env.storage().persistent().set(&DataKey::Player(player.clone()), &snapshot);
+        env.events().publish(
+            (symbol_short!("reward"), symbol_short!("state")),
+            (player, taps, balance_neaf, owned_nfts, cat_pairs.len()),
+        );
     }
 
     pub fn claim_reward(env: Env, admin: Address, player: Address, amount: i128) {
@@ -187,6 +234,11 @@ impl EmiraRewardsContract {
         env.storage().persistent().get(&DataKey::Player(player)).unwrap_or(PlayerSnapshot {
             taps: 0,
             owned_nfts: 0,
+            balance_neaf: 0,
+            tap_upgrade: 0,
+            passive_upgrade: 0,
+            luck_upgrade: 0,
+            cat_pairs: Vec::new(&env),
             total_claimed_reward: 0,
             claim_count: 0,
             last_updated_ledger: 0,
@@ -215,5 +267,32 @@ mod test {
         let snapshot = client.get_player(&player);
         assert_eq!(snapshot.total_claimed_reward, 250);
         assert_eq!(client.reward_pool(), 4750);
+    }
+
+    #[test]
+    fn game_state_tracks_inventory_and_upgrades() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(EmiraRewardsContract, ());
+        let client = EmiraRewardsContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let player = Address::generate(&env);
+        let mut cats = Vec::new(&env);
+        cats.push_back(4201);
+        cats.push_back(2);
+        cats.push_back(4208);
+        cats.push_back(1);
+
+        client.init(&admin, &5000, &500);
+        client.record_game_state(&player, &99, &12345, &3, &2, &1, &4, &cats);
+
+        let snapshot = client.get_player(&player);
+        assert_eq!(snapshot.taps, 99);
+        assert_eq!(snapshot.balance_neaf, 12345);
+        assert_eq!(snapshot.owned_nfts, 3);
+        assert_eq!(snapshot.tap_upgrade, 2);
+        assert_eq!(snapshot.passive_upgrade, 1);
+        assert_eq!(snapshot.luck_upgrade, 4);
+        assert_eq!(snapshot.cat_pairs.len(), 4);
     }
 }

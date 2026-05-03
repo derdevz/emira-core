@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
   const plugins = [react(), tailwindcss()];
+  const base = process.env.VITE_BASE_PATH ?? (command === 'serve' ? '/' : '/emira-core/');
   try {
     // @ts-expect-error Optional local plugin file is not present in every environment.
     const m = await import('./.vite-source-tags.js');
@@ -25,7 +26,7 @@ export default defineConfig(async () => {
 
   return {
     plugins,
-    base: '/emira-core/',
+    base,
     build: {
       outDir: 'dist',
       rollupOptions: {

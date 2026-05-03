@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Database,
   Lock,
   Gem,
   Grid3X3,
@@ -81,7 +82,36 @@ type CatDropResult = {
   forced?: boolean;
 };
 
+type LootboxReward =
+  | {
+      id: string;
+      kind: 'cat';
+      drop: CatDropResult;
+      forced?: boolean;
+    }
+  | {
+      id: string;
+      kind: 'neaf';
+      amount: number;
+      forced?: boolean;
+    };
+
 type OwnedInventory = Record<string, number>;
+
+type WalletProfileSnapshot = {
+  balance: number;
+  tapCount: number;
+  owned: OwnedInventory;
+  upgradeLevels: Record<UpgradeId, number>;
+  selectedTreeId: string;
+  ownedTreeIds: string[];
+  ownedProfileBackgroundIds: string[];
+  profileDisplayName: string;
+  selectedProfileCatNames: string[];
+  selectedProfileBackgroundId: string;
+  savedAt: string;
+  lastChainTxHash?: string;
+};
 
 type ProfileRecord = {
   id: string;
@@ -372,6 +402,7 @@ const nftStories: Record<string, string> = {
     'Coin Kedisi, altin pariltilari arasinda buyumus zengin ruhlu bir kedidir. Her tiklamanin bir gun buyuk kazanca donusecegine inanir. Marketplacete gosterisli durmayi seven oyuncular icin birebirdir.',
   'Elmas Kedi':
     'Elmas Kedi, buz gibi parlakligiyla nadirligin semboludur. Isigi farkli acilardan kirilir ve profil ekraninda hemen dikkat ceker. Onu elde eden oyuncular genelde kolay kolay satmak istemez.',
+  'Error Code 36': '...',
   Guts:
     'Guts, karanlik savaslardan gecmis yalniz ve sert bir kedidir. Buyuk kilici ve yipranmis gorunusu, onun asla pes etmeyen ruhunu anlatir. Zorlu grind yapan ve liderlik tablosunda savasan oyunculara yakisir.',
   'Habibi Kedi':
@@ -540,7 +571,6 @@ const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(va
 const formatPercent = (value: number) => (value >= 1 && Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
 const modalRoot = typeof document !== 'undefined' ? document.body : null;
 const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + Math.log2(level + 1) * 1.25 + level * 0.18));
-const dropRarityOrder: Rarity[] = ['Legendary', 'Epic', 'Rare', 'Common'];
 const dropChanceMultiplier: Record<Rarity, number> = {
   Common: 1,
   Rare: 0.1,
@@ -548,6 +578,7 @@ const dropChanceMultiplier: Record<Rarity, number> = {
   Legendary: 0.001,
 };
 const bubbleImages = [bubbleMoon, bubbleHeart, bubbleMusic, bubbleDots, bubbleQuestion, bubbleStar];
+const starterCatNames = ['Seker Kedi', 'Mavi Kedi', 'Coin Kedisi'];
 const guestProfileCats = [
   ['Mavi Kedi', 'Tekir', 'Coin Kedisi'],
   ['Sari Kedi', 'Gri Kedi', 'Kahve Kedi'],
@@ -556,11 +587,21 @@ const guestProfileCats = [
 
 const seededMarketListings: MarketListing[] = [
   {
+    tokenId: 4209,
+    name: 'Error Code 36',
+    rarity: 'Legendary',
+    owner: 'unknown_36',
+    priceXlm: 6000,
+    settlement: 'XLM',
+    network: 'Stellar',
+    requiresFreighter: true,
+  },
+  {
     tokenId: 4208,
     name: 'Coin Kedisi',
     rarity: 'Epic',
     owner: 'catkeeper',
-    priceXlm: 42,
+    priceXlm: 4200,
     settlement: 'XLM',
     network: 'Stellar',
     requiresFreighter: true,
@@ -570,7 +611,7 @@ const seededMarketListings: MarketListing[] = [
     name: 'Mavi Kedi',
     rarity: 'Rare',
     owner: 'novaemira',
-    priceXlm: 18,
+    priceXlm: 1800,
     settlement: 'XLM',
     network: 'Stellar',
     requiresFreighter: true,
@@ -580,7 +621,7 @@ const seededMarketListings: MarketListing[] = [
     name: 'Tekir',
     rarity: 'Rare',
     owner: 'collector_x',
-    priceXlm: 9,
+    priceXlm: 900,
     settlement: 'XLM',
     network: 'Stellar',
     requiresFreighter: true,
@@ -620,18 +661,149 @@ function addOwnedCat(inventory: OwnedInventory, name: string, amount = 1) {
   };
 }
 
-function rollCatDrop(baseChancePercent: number): CatDropResult | null {
-  for (const rarity of dropRarityOrder) {
-    const chance = baseChancePercent * dropChanceMultiplier[rarity];
-    if (Math.random() * 100 > chance) continue;
-    const candidates = nftCollection.filter((nft) => nft.rarity === rarity);
-    if (!candidates.length) continue;
+function createStarterInventory(): OwnedInventory {
+  return Object.fromEntries(starterCatNames.map((name) => [name, 1]));
+}
+
+function createStarterUpgradeLevels(): Record<UpgradeId, number> {
+  return {
+    'tap-boost': 0,
+    'hourly-flow': 0,
+    'nft-drop-lens': 0,
+  };
+}
+
+function inventoryToCatPairs(inventory: OwnedInventory) {
+  return nftCollection.flatMap((nft) => {
+    const count = inventory[nft.name] ?? 0;
+    return count > 0 ? [nft.tokenId, count] : [];
+  });
+}
+
+function catPairsToInventory(catPairs: number[]) {
+  const next: OwnedInventory = {};
+  for (let index = 0; index < catPairs.length; index += 2) {
+    const tokenId = Number(catPairs[index]);
+    const count = Number(catPairs[index + 1]);
+    const nft = nftCollection.find((item) => item.tokenId === tokenId);
+    if (nft && count > 0) next[nft.name] = count;
+  }
+  return Object.keys(next).length ? next : createStarterInventory();
+}
+
+function normalizeUpgradeLevels(value: unknown): Record<UpgradeId, number> {
+  const source = value && typeof value === 'object' ? (value as Partial<Record<UpgradeId, number>>) : {};
+  return {
+    'tap-boost': Number(source['tap-boost']) || 0,
+    'hourly-flow': Number(source['hourly-flow']) || 0,
+    'nft-drop-lens': Number(source['nft-drop-lens']) || 0,
+  };
+}
+
+function readChainValue(record: Record<string, unknown>, snakeKey: string, camelKey = snakeKey) {
+  return record[snakeKey] ?? record[camelKey];
+}
+
+function readChainNumber(record: Record<string, unknown>, snakeKey: string, camelKey = snakeKey) {
+  const value = readChainValue(record, snakeKey, camelKey);
+  if (typeof value === 'bigint') return Number(value);
+  return Number(value) || 0;
+}
+
+function normalizeChainGameState(raw: unknown): Partial<WalletProfileSnapshot> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  const lastUpdatedLedger = readChainNumber(record, 'last_updated_ledger', 'lastUpdatedLedger');
+  if (lastUpdatedLedger <= 0) return null;
+  const rawCatPairs = readChainValue(record, 'cat_pairs', 'catPairs');
+  if (!Array.isArray(rawCatPairs)) return null;
+  const catPairs = rawCatPairs.map((value) => Number(value) || 0);
+  return {
+    balance: readChainNumber(record, 'balance_neaf', 'balanceNeaf'),
+    tapCount: readChainNumber(record, 'taps'),
+    owned: catPairsToInventory(catPairs),
+    upgradeLevels: {
+      'tap-boost': readChainNumber(record, 'tap_upgrade', 'tapUpgrade'),
+      'hourly-flow': readChainNumber(record, 'passive_upgrade', 'passiveUpgrade'),
+      'nft-drop-lens': readChainNumber(record, 'luck_upgrade', 'luckUpgrade'),
+    },
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function walletProfileStorageKey(address: string) {
+  return `emira.wallet.profile.${address}`;
+}
+
+function readWalletProfileSnapshot(address: string): WalletProfileSnapshot | null {
+  try {
+    const raw = localStorage.getItem(walletProfileStorageKey(address));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<WalletProfileSnapshot>;
+    if (!parsed || typeof parsed !== 'object') return null;
     return {
-      nft: candidates[Math.floor(Math.random() * candidates.length)],
-      chance,
+      balance: Number(parsed.balance) || 0,
+      tapCount: Number(parsed.tapCount) || 0,
+      owned: parsed.owned && typeof parsed.owned === 'object' ? parsed.owned : createStarterInventory(),
+      upgradeLevels: normalizeUpgradeLevels(parsed.upgradeLevels),
+      selectedTreeId: typeof parsed.selectedTreeId === 'string' ? parsed.selectedTreeId : (homeTreeOptions[0]?.id ?? ''),
+      ownedTreeIds: Array.isArray(parsed.ownedTreeIds)
+        ? parsed.ownedTreeIds.filter((id) => typeof id === 'string')
+        : homeTreeOptions[0]
+          ? [homeTreeOptions[0].id]
+          : [],
+      ownedProfileBackgroundIds: Array.isArray(parsed.ownedProfileBackgroundIds)
+        ? parsed.ownedProfileBackgroundIds.filter((id) => typeof id === 'string')
+        : profileBackgroundOptions[0]
+          ? [profileBackgroundOptions[0].id]
+          : [],
+      profileDisplayName: typeof parsed.profileDisplayName === 'string' ? parsed.profileDisplayName : 'Emira Dreamer',
+      selectedProfileCatNames: Array.isArray(parsed.selectedProfileCatNames) ? parsed.selectedProfileCatNames.filter((name) => typeof name === 'string') : starterCatNames,
+      selectedProfileBackgroundId: typeof parsed.selectedProfileBackgroundId === 'string' ? parsed.selectedProfileBackgroundId : (profileBackgroundOptions[0]?.id ?? ''),
+      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
+      lastChainTxHash: typeof parsed.lastChainTxHash === 'string' ? parsed.lastChainTxHash : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeWalletProfileSnapshot(address: string, snapshot: WalletProfileSnapshot) {
+  localStorage.setItem(walletProfileStorageKey(address), JSON.stringify(snapshot));
+}
+
+function createLootboxId() {
+  return `loot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function rollLootboxCat(baseChancePercent: number, forced = false): CatDropResult {
+  if (forced) return forceCatDrop();
+  const rarityRoll = Math.random() * 100;
+  const rarity: Rarity = rarityRoll < 0.1 ? 'Legendary' : rarityRoll < 1.1 ? 'Epic' : rarityRoll < 10.1 ? 'Rare' : 'Common';
+  const candidates = nftCollection.filter((nft) => nft.rarity === rarity);
+  const fallbackCandidates = candidates.length ? candidates : nftCollection;
+  return {
+    nft: fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)],
+    chance: baseChancePercent * dropChanceMultiplier[rarity],
+  };
+}
+
+function rollLootboxReward(baseChancePercent: number, tapPower: number, forced = false): LootboxReward | null {
+  if (!forced && Math.random() * 100 > baseChancePercent) return null;
+  if (!forced && Math.random() < 0.55) {
+    const amount = Math.round((850 + Math.random() * 4150) * Math.max(1, tapPower));
+    return {
+      id: createLootboxId(),
+      kind: 'neaf',
+      amount,
     };
   }
-  return null;
+  return {
+    id: createLootboxId(),
+    kind: 'cat',
+    drop: rollLootboxCat(baseChancePercent, forced),
+    forced,
+  };
 }
 
 function forceCatDrop(): CatDropResult {
@@ -674,12 +846,17 @@ function NftArtwork({
 }
 
 export default function App() {
-  const Router = import.meta.env.VITE_USE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
+  const useHashRouter = import.meta.env.VITE_USE_HASH_ROUTER === 'true';
+  const basename = import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '');
 
-  return (
-    <Router>
+  return useHashRouter ? (
+    <HashRouter>
       <GameApp />
-    </Router>
+    </HashRouter>
+  ) : (
+    <BrowserRouter basename={basename}>
+      <GameApp />
+    </BrowserRouter>
   );
 }
 
@@ -702,20 +879,16 @@ function GameApp() {
     profileBackgroundOptions[0] ? [profileBackgroundOptions[0].id] : [],
   );
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
-  const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>({
-    'tap-boost': 0,
-    'hourly-flow': 0,
-    'nft-drop-lens': 0,
-  });
-  const [owned, setOwned] = useState<OwnedInventory>(() =>
-    Object.fromEntries(nftCollection.slice(0, 3).map((nft, index) => [nft.name, index === 0 ? 2 : 1])),
-  );
+  const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>(() => createStarterUpgradeLevels());
+  const [owned, setOwned] = useState<OwnedInventory>(() => createStarterInventory());
   const [listedNftNames, setListedNftNames] = useState<string[]>(() => seededMarketListings.map((listing) => listing.name));
   const [lastDrop, setLastDrop] = useState<CatDropResult | null>(null);
   const [dropToast, setDropToast] = useState<CatDropResult | null>(null);
+  const [lootboxReward, setLootboxReward] = useState<LootboxReward | null>(null);
+  const [lootboxStage, setLootboxStage] = useState<'opening' | 'revealed'>('opening');
   const [tapCount, setTapCount] = useState(0);
   const [profileDisplayName, setProfileDisplayName] = useState('Emira Dreamer');
-  const [selectedProfileCatNames, setSelectedProfileCatNames] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
+  const [selectedProfileCatNames, setSelectedProfileCatNames] = useState<string[]>(() => starterCatNames);
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
   const [, setWalletMessage] = useState('Stellar cuzdan baglantisi kontrol ediliyor.');
@@ -728,8 +901,11 @@ function GameApp() {
   const [walletSupport, setWalletSupport] = useState<{ telegram: string[]; web: string[] } | null>(null);
   const [appConfig, setAppConfig] = useState<AppRuntimeConfig | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [chainSyncState, setChainSyncState] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [chainSyncMessage, setChainSyncMessage] = useState('');
+  const loadedWalletProfileRef = useRef<string | null>(null);
+  const appliedLootboxIdsRef = useRef<Set<string>>(new Set());
   const telegramLaunchUrl = appConfig?.telegram?.launchUrl ?? fallbackTelegramLaunchUrl;
-  const telegramEnabled = Boolean(appConfig?.telegram?.enabled);
 
   const reloadLeaderboard = () =>
     fetchLeaderboard('taps')
@@ -840,6 +1016,66 @@ function GameApp() {
       .catch(() => {});
   }, [telegramSessionToken, wallet]);
 
+  useEffect(() => {
+    if (!wallet) {
+      loadedWalletProfileRef.current = null;
+      return;
+    }
+    if (loadedWalletProfileRef.current === wallet.address) return;
+
+    loadedWalletProfileRef.current = wallet.address;
+    const snapshot = readWalletProfileSnapshot(wallet.address);
+    if (!snapshot) return;
+
+    const timeout = window.setTimeout(() => {
+      setBalance(snapshot.balance);
+      setTapCount(snapshot.tapCount);
+      setOwned(snapshot.owned);
+      setUpgradeLevels(snapshot.upgradeLevels);
+      setSelectedTreeId(snapshot.selectedTreeId);
+      setOwnedTreeIds(snapshot.ownedTreeIds);
+      setOwnedProfileBackgroundIds(snapshot.ownedProfileBackgroundIds);
+      setProfileDisplayName(snapshot.profileDisplayName);
+      setSelectedProfileBackgroundId(snapshot.selectedProfileBackgroundId);
+      setSelectedProfileCatNames(snapshot.selectedProfileCatNames.slice(0, 3));
+      setChainSyncMessage(snapshot.lastChainTxHash ? `Son zincir kaydi ${snapshot.lastChainTxHash.slice(0, 10)}...` : 'Cuzdan profili yuklendi.');
+    }, 0);
+
+    void import('./lib/stellarMarket')
+      .then((market) => market.readRewardsGameState(wallet))
+      .then((raw) => {
+        const chainSnapshot = normalizeChainGameState(raw);
+        if (!chainSnapshot) return;
+        setBalance(chainSnapshot.balance ?? 0);
+        setTapCount(chainSnapshot.tapCount ?? 0);
+        setOwned(chainSnapshot.owned ?? createStarterInventory());
+        setUpgradeLevels(chainSnapshot.upgradeLevels ?? createStarterUpgradeLevels());
+        setChainSyncMessage('Cuzdan profili zincirden yuklendi.');
+      })
+      .catch(() => {});
+
+    return () => window.clearTimeout(timeout);
+  }, [wallet]);
+
+  useEffect(() => {
+    if (!wallet || loadedWalletProfileRef.current !== wallet.address) return;
+
+    writeWalletProfileSnapshot(wallet.address, {
+      balance,
+      tapCount,
+      owned,
+      upgradeLevels,
+      selectedTreeId,
+      ownedTreeIds,
+      ownedProfileBackgroundIds,
+      profileDisplayName,
+      selectedProfileCatNames,
+      selectedProfileBackgroundId,
+      savedAt: new Date().toISOString(),
+      lastChainTxHash: readWalletProfileSnapshot(wallet.address)?.lastChainTxHash,
+    });
+  }, [balance, owned, ownedProfileBackgroundIds, ownedTreeIds, profileDisplayName, selectedProfileBackgroundId, selectedProfileCatNames, selectedTreeId, tapCount, upgradeLevels, wallet]);
+
   const handleConnectWallet = async () => {
     setWalletMenuOpen(false);
     setWalletState('connecting');
@@ -864,36 +1100,63 @@ function GameApp() {
     setWalletMessage('Cuzdan oturumu bu uygulamada kapatildi.');
   };
 
-  const handleTelegramLogin = async () => {
-    try {
-      const initData = resolveTelegramInitData(telegramContext);
-      if (!initData) {
-        throw new Error(
-          telegramContext.isTelegram
-            ? 'Telegram initData eksik. Mini App ayarlari veya bot token dogrulanmali.'
-            : telegramEnabled
-              ? 'Telegram baglantisi sadece Mini App icinde acilir. Once Mini App ac.'
-              : 'Telegram Mini App backend tarafinda henuz tam etkin degil. TELEGRAM_BOT_TOKEN, bot username ve public WebApp URL gerekli.',
-        );
-      }
-      const payload = await authenticateTelegram(initData);
-      const token = payload?.session?.token;
-      if (!token) throw new Error('Telegram oturumu baslatilamadi.');
-      localStorage.setItem('emira.telegram.session', token);
-      setTelegramSessionToken(token);
-      setCurrentPlayer(payload.player ?? null);
-      setTelegramMessage(`Telegram oturumu aktif: ${payload.player?.username ?? '@guest'}`);
-      void reloadLeaderboard();
-    } catch (error) {
-      setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
-    }
-  };
-
   const handleCopyAddress = async () => {
     if (!wallet) return;
     await navigator.clipboard.writeText(wallet.address);
     setCopiedAddress(true);
     window.setTimeout(() => setCopiedAddress(false), 1400);
+  };
+
+  const handleSyncProgressToChain = async () => {
+    if (!wallet) return;
+    setChainSyncState('syncing');
+    setChainSyncMessage('Freighter imzasi bekleniyor.');
+    try {
+      const market = await import('./lib/stellarMarket');
+      const receipt = await market.signAndSubmitGameState({
+        wallet,
+        taps: tapCount,
+        balanceNeaf: balance,
+        ownedNfts: totalOwnedCats(owned),
+        tapUpgrade: upgradeLevels['tap-boost'],
+        passiveUpgrade: upgradeLevels['hourly-flow'],
+        luckUpgrade: upgradeLevels['nft-drop-lens'],
+        catPairs: inventoryToCatPairs(owned),
+      });
+      const snapshot = readWalletProfileSnapshot(wallet.address);
+      writeWalletProfileSnapshot(wallet.address, {
+        ...(snapshot ?? {
+          balance,
+          tapCount,
+          owned,
+          upgradeLevels,
+          selectedTreeId,
+          ownedTreeIds,
+          ownedProfileBackgroundIds,
+          selectedProfileCatNames,
+          selectedProfileBackgroundId,
+          profileDisplayName,
+          savedAt: new Date().toISOString(),
+        }),
+        balance,
+        tapCount,
+        owned,
+        upgradeLevels,
+        selectedTreeId,
+        ownedTreeIds,
+        ownedProfileBackgroundIds,
+        selectedProfileCatNames,
+        selectedProfileBackgroundId,
+        profileDisplayName,
+        savedAt: new Date().toISOString(),
+        lastChainTxHash: receipt.hash,
+      });
+      setChainSyncState('success');
+      setChainSyncMessage(`Zincire kaydedildi: ${receipt.hash.slice(0, 10)}...`);
+    } catch (error) {
+      setChainSyncState('error');
+      setChainSyncMessage(error instanceof Error ? error.message : 'Zincir kaydi basarisiz oldu.');
+    }
   };
 
   const tapCoin = () => {
@@ -903,12 +1166,11 @@ function GameApp() {
     setCombo((current) => (current >= comboCycleLength ? 1 : current + 1));
 
     if (walletState === 'connected' && wallet) {
-      const drop = dropMissesRef.current >= 49 ? forceCatDrop() : rollCatDrop(nftDropChance);
-      if (drop) {
+      const reward = rollLootboxReward(nftDropChance, tapPower, dropMissesRef.current >= 49);
+      if (reward) {
         dropMissesRef.current = 0;
-        setOwned((current) => addOwnedCat(current, drop.nft.name));
-        setLastDrop(drop);
-        setDropToast(drop);
+        setLootboxReward(reward);
+        setLootboxStage('opening');
       } else {
         dropMissesRef.current += 1;
       }
@@ -967,15 +1229,28 @@ function GameApp() {
       throw new Error('Ilan vermek icin Freighter cuzdanini bagla.');
     }
 
+    const market = await import('./lib/stellarMarket');
     if (listedNftNames.includes(name)) {
-      const payload = await prepareMarketCancel(nft.tokenId).catch(() => ({ ok: true, offline: true }));
+      const chainReceipt = market.isMarketContractConfigured()
+        ? await market.signAndSubmitMarketContractAction({
+            wallet,
+            action: { type: 'cancel', tokenId: nft.tokenId },
+          })
+        : null;
+      const payload = await prepareMarketCancel(nft.tokenId);
       setListedNftNames((current) => current.filter((item) => item !== name));
       setMarketListings((current) => current.filter((item) => item.tokenId !== nft.tokenId));
-      return payload;
+      return { ...payload, chainReceipt };
     }
 
     const ownerAddress = wallet.address;
     const listingPrice = Math.max(0.01, priceXlm ?? nft.price);
+    const chainReceipt = market.isMarketContractConfigured()
+      ? await market.signAndSubmitMarketContractAction({
+          wallet,
+          action: { type: 'list', tokenId: nft.tokenId, priceXlm: listingPrice },
+        })
+      : null;
     const payload = await prepareMarketListing({
       tokenId: nft.tokenId,
       ownerAddress,
@@ -983,20 +1258,7 @@ function GameApp() {
       name: nft.name,
       rarity: nft.rarity,
       provider: wallet.provider,
-    }).catch(() => ({
-      ok: true,
-      offline: true,
-      listing: {
-        tokenId: nft.tokenId,
-        name: nft.name,
-        rarity: nft.rarity,
-        owner: ownerAddress,
-        priceXlm: listingPrice,
-        settlement: 'XLM',
-        network: wallet.network,
-        requiresFreighter: true,
-      } satisfies MarketListing,
-    }));
+    });
     setListedNftNames((current) => [...new Set([...current, name])]);
     if (payload?.listing) {
       setMarketListings((current) => {
@@ -1004,7 +1266,7 @@ function GameApp() {
         return [...next, payload.listing];
       });
     }
-    return payload;
+    return { ...payload, chainReceipt };
   };
 
   const handlePurchaseNft = async (nft: NftItem) => {
@@ -1110,11 +1372,36 @@ function GameApp() {
     return () => window.clearTimeout(timeout);
   }, [dropToast]);
 
+  useEffect(() => {
+    if (!lootboxReward || lootboxStage !== 'opening') return;
+    const timeout = window.setTimeout(() => {
+      if (!appliedLootboxIdsRef.current.has(lootboxReward.id)) {
+        appliedLootboxIdsRef.current.add(lootboxReward.id);
+        if (lootboxReward.kind === 'cat') {
+          setOwned((current) => addOwnedCat(current, lootboxReward.drop.nft.name));
+          setLastDrop(lootboxReward.drop);
+          setDropToast(lootboxReward.drop);
+        } else {
+          setBalance((current) => current + lootboxReward.amount);
+        }
+      }
+      setLootboxStage('revealed');
+    }, 1450);
+    return () => window.clearTimeout(timeout);
+  }, [lootboxReward, lootboxStage]);
+
+  useEffect(() => {
+    if (!lootboxReward || lootboxStage !== 'revealed') return;
+    const timeout = window.setTimeout(() => setLootboxReward(null), 2600);
+    return () => window.clearTimeout(timeout);
+  }, [lootboxReward, lootboxStage]);
+
   return (
     <div className={`relative overflow-x-hidden bg-void text-text-primary ${isHomePage ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
       <GridBackground />
       <ScrollToTop />
       <CatDropToast drop={dropToast} />
+      <LootboxOverlay reward={lootboxReward} stage={lootboxStage} />
 
       <motion.nav
         initial={{ y: -100 }}
@@ -1163,17 +1450,6 @@ function GameApp() {
               >
                 Neaf Web
               </a>
-              <WalletMenu
-                wallet={wallet}
-                state={walletState}
-                copied={copiedAddress}
-                onConnect={handleConnectWallet}
-                onCopy={handleCopyAddress}
-                onDisconnect={handleDisconnectWallet}
-                onSwitch={handleConnectWallet}
-                open={walletMenuOpen}
-                onOpenChange={setWalletMenuOpen}
-              />
               {!telegramContext.isTelegram && telegramLaunchUrl ? (
                 <a
                   className="rounded-full border border-surface bg-white px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
@@ -1184,6 +1460,20 @@ function GameApp() {
                   Telegram Ac
                 </a>
               ) : null}
+              <WalletMenu
+                wallet={wallet}
+                state={walletState}
+                copied={copiedAddress}
+                syncState={chainSyncState}
+                syncMessage={chainSyncMessage}
+                onConnect={handleConnectWallet}
+                onCopy={handleCopyAddress}
+                onDisconnect={handleDisconnectWallet}
+                onSwitch={handleConnectWallet}
+                onSyncProgress={handleSyncProgressToChain}
+                open={walletMenuOpen}
+                onOpenChange={setWalletMenuOpen}
+              />
             </div>
           </div>
 
@@ -1219,16 +1509,6 @@ function GameApp() {
               >
                 Neaf Web
               </a>
-              {!telegramContext.isTelegram && telegramLaunchUrl ? (
-                <a
-                  className="font-mono text-sm uppercase tracking-[0.18em] text-text-secondary hover:text-text-primary"
-                  href={telegramLaunchUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Telegram Ac
-                </a>
-              ) : null}
               {walletState === 'missing' ? (
                 <a
                   className="inline-flex w-fit rounded-full border border-aurora-mid/20 bg-aurora-mid px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-white"
@@ -1248,6 +1528,16 @@ function GameApp() {
                   {walletButtonLabel(walletState, wallet)}
                 </button>
               )}
+              {!telegramContext.isTelegram && telegramLaunchUrl ? (
+                <a
+                  className="font-mono text-sm uppercase tracking-[0.18em] text-text-secondary hover:text-text-primary"
+                  href={telegramLaunchUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Telegram Ac
+                </a>
+              ) : null}
             </div>
           </motion.div>
         ) : null}
@@ -1309,15 +1599,14 @@ function GameApp() {
                 profileAvatar={profileAvatar}
                 onAvatarChange={setProfileAvatar}
                 ownedInventory={owned}
-                listedNftNames={listedNftNames}
                 selectedCatNames={selectedProfileCatNames}
                 onSelectedCatNamesChange={setSelectedProfileCatNames}
                 profileDisplayName={profileDisplayName}
                 onProfileDisplayNameChange={setProfileDisplayName}
-                telegramSessionToken={telegramSessionToken}
+                tapCount={tapCount}
+                walletAddress={wallet?.address ?? null}
+                chainSyncMessage={chainSyncMessage}
                 currentPlayer={currentPlayer}
-                onTelegramLogin={handleTelegramLogin}
-                telegramLaunchUrl={telegramLaunchUrl}
               />
             }
           />
@@ -1355,6 +1644,73 @@ function CatDropToast({ drop }: { drop: CatDropResult | null }) {
       ) : null}
     </AnimatePresence>
   );
+}
+
+function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage: 'opening' | 'revealed' }) {
+  const content = (
+    <AnimatePresence>
+      {reward ? (
+        <motion.div
+          key={reward.id}
+          className="fixed inset-0 z-[90] grid place-items-center bg-zinc-900/62 px-6 backdrop-grayscale backdrop-blur-[2px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="relative grid min-h-[22rem] w-[min(28rem,calc(100vw-2rem))] place-items-center rounded-[2rem] border border-white/60 bg-white/92 p-8 text-center shadow-2xl"
+            initial={{ y: 36, scale: 0.92 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={{ y: 30, scale: 0.94 }}
+            transition={{ type: 'spring', stiffness: 210, damping: 22 }}
+          >
+            <motion.div
+              className="absolute inset-6 rounded-[1.7rem] bg-[radial-gradient(circle_at_center,rgba(255,225,138,0.5),transparent_62%)]"
+              animate={{ opacity: stage === 'revealed' ? 1 : [0.35, 0.75, 0.35], scale: stage === 'revealed' ? 1.12 : [1, 1.08, 1] }}
+              transition={{ duration: 0.55, repeat: stage === 'opening' ? Infinity : 0 }}
+              aria-hidden="true"
+            />
+            {stage === 'opening' ? (
+              <motion.div
+                className="relative grid place-items-center"
+                animate={{ rotate: [-4, 5, -3, 4, 0], y: [0, -8, 0] }}
+                transition={{ duration: 0.5, repeat: Infinity, repeatType: 'mirror' }}
+              >
+                <div className="h-36 w-44 rounded-[1.4rem] border-4 border-amber-800 bg-gradient-to-br from-amber-300 via-yellow-300 to-orange-400 shadow-[0_22px_50px_rgba(120,53,15,0.35)]">
+                  <div className="h-9 rounded-t-[1rem] border-b-4 border-amber-800 bg-gradient-to-r from-orange-500 via-amber-300 to-orange-500" />
+                  <div className="mx-auto mt-6 grid h-16 w-16 place-items-center rounded-full border-4 border-amber-800 bg-white/85">
+                    <Gem className="text-amber-600" size={30} />
+                  </div>
+                </div>
+                <p className="mt-6 font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Lootbox aciliyor</p>
+              </motion.div>
+            ) : (
+              <motion.div className="relative" initial={{ opacity: 0, scale: 0.72 }} animate={{ opacity: 1, scale: 1 }}>
+                {reward.kind === 'cat' ? (
+                  <>
+                    <NftArtwork nft={reward.drop.nft} className="mx-auto h-36 w-36 rounded-[1.5rem]" imageClassName="p-3" />
+                    <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-600">Kedi cikti</p>
+                    <p className={`${safeFontClass(reward.drop.nft.name)} mt-1 text-4xl text-text-primary`}>{reward.drop.nft.name}</p>
+                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">
+                      {reward.drop.nft.rarity} / sans %{formatPercent(reward.drop.chance)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <img className="mx-auto h-28 w-28 object-contain drop-shadow-[0_18px_28px_rgba(15,108,189,0.24)]" src={neafIcon} alt="" aria-hidden="true" />
+                    <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-aurora-start">NEAF cikti</p>
+                    <p className="mt-1 font-display text-5xl font-extrabold text-text-primary">+{formatNumber(reward.amount)}</p>
+                  </>
+                )}
+              </motion.div>
+            )}
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+
+  return modalRoot ? createPortal(content, modalRoot) : content;
 }
 
 function HomePage({
@@ -1463,7 +1819,7 @@ function HomePage({
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <HomeStat label="Tap gucu" value={`+${tapPower}`} />
           <HomeStat label="Pasif/saat" value={formatNumber(passiveIncome)} />
-          <HomeStat label="NFT sansi" value={`%${formatPercent(nftDropChance)}`} />
+          <HomeStat label="Lootbox sansi" value={`%${formatPercent(nftDropChance)}`} />
           <HomeStat label="Bakiye" value={`${formatNumber(balance)} NEAF`} />
         </div>
         <div className="mt-3 rounded-2xl border border-surface bg-deep/70 p-3">
@@ -1476,7 +1832,7 @@ function HomePage({
             ))}
           </div>
           <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-            Drop sadece cuzdan bagliyken roll alir.
+            Lootbox sadece cuzdan bagliyken roll alir.
           </p>
         </div>
         {lastDrop ? (
@@ -1569,10 +1925,15 @@ function MuseumPage({ ownedInventory, listedNftNames }: { ownedInventory: OwnedI
             >
               <NftArtwork nft={nft} locked={!isUnlocked} className="aspect-square rounded-[1.25rem]" imageClassName="p-4 group-hover:scale-[1.03]" />
               <div className="mt-5 flex items-center justify-between gap-3">
-                <h3 className={`${safeFontClass(nft.name)} text-2xl text-text-primary`}>{isUnlocked ? nft.name : 'Kilitli Kedi'}</h3>
-                <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-                  {isUnlocked ? `x${shownCount}` : 'Locked'}
-                </span>
+                <div>
+                  <h3 className={`${safeFontClass(nft.name)} text-2xl text-text-primary`}>{isUnlocked ? nft.name : 'Kilitli Kedi'}</h3>
+                  {isUnlocked ? <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</p> : null}
+                </div>
+                <div className="grid justify-items-end gap-2">
+                  <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+                    {isUnlocked ? `x${shownCount}` : 'Locked'}
+                  </span>
+                </div>
               </div>
             </motion.article>
           );
@@ -2267,15 +2628,14 @@ function ProfilePage({
   profileAvatar,
   onAvatarChange,
   ownedInventory,
-  listedNftNames,
   selectedCatNames,
   onSelectedCatNamesChange,
   profileDisplayName,
   onProfileDisplayNameChange,
-  telegramSessionToken,
+  tapCount,
+  walletAddress,
+  chainSyncMessage,
   currentPlayer,
-  onTelegramLogin,
-  telegramLaunchUrl,
 }: {
   selectedBackground?: { id: string; name: string; image: string };
   backgroundOptions: PickerOption[];
@@ -2286,15 +2646,14 @@ function ProfilePage({
   profileAvatar: string | null;
   onAvatarChange: (url: string | null) => void;
   ownedInventory: OwnedInventory;
-  listedNftNames: string[];
   selectedCatNames: string[];
   onSelectedCatNamesChange: (names: string[]) => void;
   profileDisplayName: string;
   onProfileDisplayNameChange: (name: string) => void;
-  telegramSessionToken: string | null;
+  tapCount: number;
+  walletAddress: string | null;
+  chainSyncMessage: string;
   currentPlayer: ProfileRecord | null;
-  onTelegramLogin: () => Promise<void>;
-  telegramLaunchUrl: string | null;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [catPickerOpen, setCatPickerOpen] = useState(false);
@@ -2317,7 +2676,7 @@ function ProfilePage({
       });
   }, [currentPlayer, isOwnProfile, viewedPlayer]);
 
-  const ownedProfileNfts = nftCollection.filter((nft) => visibleOwnedCount(ownedInventory, listedNftNames, nft.name) > 0);
+  const ownedProfileNfts = nftCollection.filter((nft) => (ownedInventory[nft.name] ?? 0) > 0);
   const fallbackGuestNames = guestProfileCats[Math.abs(viewedPlayer.length) % guestProfileCats.length];
   const selectedProfileNfts = (isOwnProfile ? selectedCatNames : fallbackGuestNames)
     .map((name) => nftCollection.find((nft) => nft.name === name))
@@ -2388,34 +2747,25 @@ function ProfilePage({
                 Ismi degistir
               </button>
             )}
-            {!telegramSessionToken ? (
-              <>
-                <button
-                  className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
-                  type="button"
-                  onClick={() => {
-                    void onTelegramLogin();
-                  }}
-                >
-                  Telegram bagla
-                </button>
-                {telegramLaunchUrl ? (
-                  <a
-                    className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
-                    href={telegramLaunchUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Mini App ac
-                  </a>
-                ) : null}
-              </>
-            ) : (
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-emerald-700">
-                Telegram aktif
-              </span>
-            )}
           </div>
+        ) : null}
+        <div className="mb-4 grid gap-3 md:grid-cols-4">
+          {[
+            ['NEAF', formatNumber(balance)],
+            ['Tiklama', formatNumber(tapCount)],
+            ['Kedi', formatNumber(totalOwnedCats(ownedInventory))],
+            ['Cuzdan', walletAddress ? shortAddress(walletAddress) : 'Bagli degil'],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-[1.25rem] border border-surface bg-white/92 px-5 py-4 shadow-sm">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">{label}</p>
+              <p className="mt-1 font-display text-2xl font-extrabold text-text-primary">{value}</p>
+            </div>
+          ))}
+        </div>
+        {chainSyncMessage ? (
+          <p className="mb-4 rounded-[1.25rem] border border-surface bg-white/88 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted shadow-sm">
+            {chainSyncMessage}
+          </p>
         ) : null}
         <div className="relative overflow-hidden rounded-[2rem] border border-surface bg-white shadow-sm">
           {isOwnProfile ? (
@@ -2683,21 +3033,27 @@ function WalletMenu({
   wallet,
   state,
   copied,
+  syncState,
+  syncMessage,
   open,
   onConnect,
   onCopy,
   onDisconnect,
   onSwitch,
+  onSyncProgress,
   onOpenChange,
 }: {
   wallet: WalletConnection | null;
   state: WalletUiState;
   copied: boolean;
+  syncState: 'idle' | 'syncing' | 'success' | 'error';
+  syncMessage: string;
   open: boolean;
   onConnect: () => void;
   onCopy: () => void;
   onDisconnect: () => void;
   onSwitch: () => void;
+  onSyncProgress: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
   if (state === 'missing') {
@@ -2749,6 +3105,16 @@ function WalletMenu({
             {copied ? <Check size={18} className="text-neon" /> : <Copy size={18} />}
             {copied ? 'Adres kopyalandi' : 'Cuzdan adresini kopyala'}
           </button>
+          <button
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-text-secondary hover:bg-deep hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+            type="button"
+            onClick={onSyncProgress}
+            disabled={syncState === 'syncing'}
+          >
+            <Database size={18} />
+            {syncState === 'syncing' ? 'Zincire kaydediliyor' : 'Ilerlemeyi zincire kaydet'}
+          </button>
+          {syncMessage ? <p className="px-3 pb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">{syncMessage}</p> : null}
           <button className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-text-secondary hover:bg-deep hover:text-text-primary" type="button" onClick={onSwitch}>
             <Repeat size={18} />
             Cuzdan degistir
