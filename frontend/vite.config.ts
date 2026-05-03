@@ -2,25 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-function resolveBasePath() {
-  const explicitBase = process.env.VITE_BASE_PATH;
-  if (explicitBase) {
-    return explicitBase;
-  }
-
-  const repository = process.env.GITHUB_REPOSITORY;
-  if (!repository) {
-    return '/';
-  }
-
-  const [, repoName] = repository.split('/');
-  if (!repoName || repoName.endsWith('.github.io')) {
-    return '/';
-  }
-
-  return `/${repoName}/`;
-}
-
 // https://vite.dev/config/
 export default defineConfig(async () => {
   const plugins = [react(), tailwindcss()];
@@ -44,8 +25,9 @@ export default defineConfig(async () => {
 
   return {
     plugins,
-    base: resolveBasePath(),
+    base: '/emira-core/',
     build: {
+      outDir: 'dist',
       rollupOptions: {
         output: {
           manualChunks(id: string) {
