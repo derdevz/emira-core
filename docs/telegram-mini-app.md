@@ -45,6 +45,9 @@ It is not the replacement for the full web app; it is the retention layer.
 - wallet link table
 - prepared buy/list/cancel XDR endpoints
 - read-model sync for profile, leaderboard, and market
+- real `TELEGRAM_BOT_TOKEN` based HMAC validation
+- public Mini App URL configured in BotFather
+- `ALLOW_TELEGRAM_MOCK=false` in production
 
 ## Frontend Needs
 
@@ -52,3 +55,9 @@ It is not the replacement for the full web app; it is the retention layer.
 - Telegram surface detection
 - reduced layout shell for Mini App
 - fallback CTA to open the web app when a flow is not available in Telegram
+
+## Live Runtime Notes
+
+- Telegram login is now treated as production auth, not as a default local mock.
+- Outside Telegram, users should be redirected to the Mini App launch URL instead of receiving a fake session.
+- Wallet signing inside Telegram is expected to happen through WalletConnect on Stellar testnet.

@@ -60,3 +60,8 @@ export function buildTelegramMiniAppUrl() {
   if (!username) return null;
   return `https://t.me/${username}?startapp=${encodeURIComponent(startParam)}`;
 }
+
+export function resolveTelegramInitData(context: TelegramWebAppContext) {
+  if (!context.isTelegram) return null;
+  return context.initData?.trim() ? context.initData : null;
+}

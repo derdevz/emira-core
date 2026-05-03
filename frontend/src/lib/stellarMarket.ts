@@ -1,4 +1,3 @@
-import { Asset, BASE_FEE, Horizon, Memo, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import type { WalletConnection } from './freighter';
 
 const explicitHorizonUrl = import.meta.env.VITE_STELLAR_HORIZON_URL;
@@ -37,7 +36,17 @@ export async function signAndSubmitMarketPayment({
     throw new Error('Stellar pazar alici adresi ayarlanmamis.');
   }
 
-  const server = new Horizon.Server(resolveHorizonUrl(wallet.network));
+  const [stellarBase, horizonModule] = await Promise.all([
+    import('@stellar/stellar-base'),
+    import('../../node_modules/@stellar/stellar-sdk/lib/no-axios/horizon/index.js'),
+  ]);
+  const { Asset, BASE_FEE, Memo, Operation, TransactionBuilder } = stellarBase;
+  const Server = horizonModule.Server ?? horizonModule.default?.Server;
+  if (!Server) {
+    throw new Error('Stellar Horizon server modulu yuklenemedi.');
+  }
+
+  const server = new Server(resolveHorizonUrl(wallet.network));
   const source = await server.loadAccount(wallet.address);
   const transaction = new TransactionBuilder(source, {
     fee: BASE_FEE,

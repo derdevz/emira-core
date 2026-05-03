@@ -14,6 +14,7 @@ artifacts for the final Rise In delivery.
 - Freighter wallet detection, connect flow, wallet menu, address copy, switch, and local disconnect actions.
 - Soroban smart contract scaffold for reward and player progress snapshots.
 - Soroban marketplace contract scaffold for XLM-based Stellar market flows.
+- Soroban build, deploy, and transaction verification scripts for Stellar testnet.
 - Soroban-oriented architecture notes for rewards, NFT ownership, seasonal leaderboards, and off-chain progress.
 - Telegram Mini App integration plan for retention gameplay and mobile wallet flows.
 - Dockerized frontend build and runtime.
@@ -117,6 +118,42 @@ The repository includes a Pages deployment workflow for the frontend.
 The deploy build enables `VITE_USE_HASH_ROUTER=true`, so direct refreshes and deep links work on GitHub Pages without
 server-side rewrite rules.
 
+## Telegram + Vercel Deployment
+
+The repository is now prepared for a single-origin Vercel deployment:
+
+- `frontend/dist` is published as the site output
+- `/api/*` and `/health` are routed to the serverless entry at `api/index.mjs`
+- frontend API calls default to the same origin, so `VITE_API_BASE_URL` can stay empty on Vercel
+- when running on Vercel without PostgreSQL, runtime fallback data is stored in `/tmp/emira-runtime-state.json`
+
+Recommended Vercel environment variables:
+
+- `TELEGRAM_BOT_USERNAME`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBAPP_URL`
+- `SESSION_JWT_SECRET`
+- `WALLETCONNECT_PROJECT_ID`
+- `VITE_WALLETCONNECT_PROJECT_ID`
+- `VITE_TELEGRAM_BOT_USERNAME`
+- `VITE_TELEGRAM_WEBAPP_URL`
+- `VITE_STELLAR_NETWORK`
+- `VITE_SOROBAN_RPC_URL`
+- `VITE_STELLAR_HORIZON_URL`
+- `VITE_STELLAR_MARKETPLACE_ADDRESS`
+- `VITE_SOROBAN_MARKET_CONTRACT_ID`
+- `VITE_SOROBAN_REWARDS_CONTRACT_ID`
+- `SOROBAN_REWARDS_CONTRACT_ID`
+- `ALLOW_TELEGRAM_MOCK=false`
+
+After the first Vercel deploy, set the Telegram Mini App URL in BotFather to the exact production URL, for example:
+
+```text
+https://your-vercel-domain.vercel.app
+```
+
+If you want persistence across deployments and cold starts, configure `POSTGRES_URL`.
+
 ## Environment
 
 Copy the example file before local development:
@@ -127,12 +164,14 @@ Copy-Item frontend/.env.example frontend/.env
 
 Key frontend variables:
 
-- `VITE_API_BASE_URL`: backend API URL, default `http://localhost:8080`
+- `VITE_API_BASE_URL`: backend API URL, leave empty for same-origin Vercel deploy or set `http://localhost:8080` for local backend
 - `VITE_STELLAR_NETWORK`: expected Stellar network, default `testnet`
 - `VITE_SOROBAN_RPC_URL`: Soroban RPC URL
 - `VITE_WALLETCONNECT_PROJECT_ID`: WalletConnect project id for Telegram/mobile surfaces
 - `VITE_TELEGRAM_BOT_USERNAME`: Mini App bot username
 - `VITE_TELEGRAM_WEBAPP_URL`: public Telegram Mini App URL
+- `VITE_SOROBAN_MARKET_CONTRACT_ID`: live marketplace contract id
+- `VITE_SOROBAN_REWARDS_CONTRACT_ID`: live rewards contract id
 
 Key backend variables:
 
@@ -142,12 +181,15 @@ Key backend variables:
 - `STELLAR_HORIZON_URL`: Horizon URL for transaction submission
 - `STELLAR_MARKETPLACE_ADDRESS`: destination account for XLM market settlement
 - `SOROBAN_MARKET_CONTRACT_ID`: marketplace contract id for prepared on-chain actions
+- `SOROBAN_REWARDS_CONTRACT_ID`: rewards contract id for backend chain metadata
 - `TELEGRAM_BOT_USERNAME`: Telegram bot username used by the Mini App
 - `TELEGRAM_WEBAPP_URL`: Telegram Mini App URL
 - `WALLETCONNECT_PROJECT_ID`: WalletConnect project id for mobile / Telegram signing
 - `TELEGRAM_BOT_TOKEN`: Telegram WebApp validation token
 - `SESSION_JWT_SECRET`: backend session signing secret
 - `POSTGRES_URL`: persistent database connection string
+- `DATA_FILE`: optional local runtime state file path, not needed on Vercel unless you want a custom tmp path
+- `ALLOW_TELEGRAM_MOCK`: keep `false` in production; only enable for local testing
 
 ## Planned Backend And Contract Direction
 
@@ -169,6 +211,7 @@ Soroban should store durable economic state:
 See [docs/architecture.md](docs/architecture.md) for the detailed plan.
 See [docs/roadmap.md](docs/roadmap.md) for the staged development roadmap.
 See [docs/telegram-mini-app.md](docs/telegram-mini-app.md) for the Telegram Mini App scope.
+See [docs/deploy-testnet.md](docs/deploy-testnet.md) for the Soroban testnet deployment flow.
 
 Backend API now also includes:
 
@@ -195,6 +238,6 @@ Required repository artifacts are included here:
 
 Important note:
 
-- The real Stellar testnet transaction hash must still be produced manually from Freighter and pasted into
+- Real Stellar testnet deploy and init transaction hashes are now recorded in
   `docs/submission/transaction-hash.md`.
 - After finalizing the repository, the GitHub repository link should be submitted through the Rise In platform.

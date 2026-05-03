@@ -1,0 +1,13 @@
+{
+  "name": "emira-core",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build:web": "npm --workspace frontend run build",
+    "dev:web": "npm --workspace frontend run dev",
+    "dev:api": "npm --workspace backend run dev"
+  }
+}

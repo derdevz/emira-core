@@ -10,7 +10,15 @@ function ensureParentDirectory(filePath) {
 }
 
 export function resolveStorageFile() {
-  return process.env.DATA_FILE ?? defaultStorageFile;
+  if (process.env.DATA_FILE) {
+    return process.env.DATA_FILE;
+  }
+
+  if (process.env.VERCEL) {
+    return path.join('/tmp', 'emira-runtime-state.json');
+  }
+
+  return defaultStorageFile;
 }
 
 export function loadRuntimeState(fallbackState) {

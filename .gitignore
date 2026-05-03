@@ -8,6 +8,10 @@ dist/
 frontend/dist/
 dist-ssr/
 coverage/
+target/
+.soroban/
+.stellar-tmp/
+contracts/*/test_snapshots/
 
 # Environment files
 .env

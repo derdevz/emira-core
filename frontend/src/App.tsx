@@ -37,7 +37,7 @@ import {
   recordTap,
 } from './lib/apiClient';
 import { connectPrimaryWallet, inspectPrimaryWallet, type WalletConnection } from './lib/wallet';
-import { buildTelegramMiniAppUrl, prepareTelegramWebApp, readTelegramWebAppContext } from './lib/wallet/telegram';
+import { buildTelegramMiniAppUrl, prepareTelegramWebApp, readTelegramWebAppContext, resolveTelegramInitData } from './lib/wallet/telegram';
 
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
 type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
@@ -76,6 +76,22 @@ type ProfileRecord = {
   balanceNeaf: number;
   ownedCount: number;
   walletAddress: string | null;
+};
+
+type AppRuntimeConfig = {
+  wallets?: {
+    telegram: string[];
+    web: string[];
+  };
+  marketContractId?: string;
+  rewardsContractId?: string;
+  telegram?: {
+    enabled?: boolean;
+    botUsername?: string;
+    webAppUrl?: string;
+    launchUrl?: string | null;
+    validationMode?: string;
+  };
 };
 
 const freighterInstallUrl = 'https://www.freighter.app/';
@@ -544,7 +560,7 @@ function GameApp() {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
   const telegramContext = readTelegramWebAppContext();
-  const telegramLaunchUrl = buildTelegramMiniAppUrl();
+  const fallbackTelegramLaunchUrl = buildTelegramMiniAppUrl();
   const [isOpen, setIsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [balance, setBalance] = useState(128450);
@@ -575,7 +591,10 @@ function GameApp() {
   const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
   const [marketListings, setMarketListings] = useState<MarketListing[]>([]);
   const [walletSupport, setWalletSupport] = useState<{ telegram: string[]; web: string[] } | null>(null);
+  const [appConfig, setAppConfig] = useState<AppRuntimeConfig | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const telegramLaunchUrl = appConfig?.telegram?.launchUrl ?? fallbackTelegramLaunchUrl;
+  const telegramEnabled = Boolean(appConfig?.telegram?.enabled);
 
   const reloadLeaderboard = () =>
     fetchLeaderboard('taps')
@@ -614,6 +633,7 @@ function GameApp() {
   useEffect(() => {
     fetchAppConfig()
       .then((payload) => {
+        setAppConfig(payload ?? null);
         setWalletSupport(payload.wallets ?? null);
       })
       .catch(() => {});
@@ -651,7 +671,8 @@ function GameApp() {
   useEffect(() => {
     if (!telegramContext.isTelegram || telegramSessionToken) return;
 
-    const initData = telegramContext.initData || `mock:${telegramContext.username ?? 'emira_player'}`;
+    const initData = resolveTelegramInitData(telegramContext);
+    if (!initData) return;
 
     authenticateTelegram(initData)
       .then((payload) => {
@@ -666,7 +687,7 @@ function GameApp() {
       .catch((error) => {
         setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
       });
-  }, [telegramContext.initData, telegramContext.isTelegram, telegramContext.username, telegramSessionToken]);
+  }, [telegramContext, telegramSessionToken]);
 
   useEffect(() => {
     if (!wallet || !telegramSessionToken) return;
@@ -709,7 +730,16 @@ function GameApp() {
 
   const handleTelegramLogin = async () => {
     try {
-      const initData = telegramContext.initData || `mock:${telegramContext.username ?? 'emira_player'}`;
+      const initData = resolveTelegramInitData(telegramContext);
+      if (!initData) {
+        throw new Error(
+          telegramContext.isTelegram
+            ? 'Telegram initData eksik. Mini App ayarlari veya bot token dogrulanmali.'
+            : telegramEnabled
+              ? 'Telegram baglantisi sadece Mini App icinde acilir. Once Mini App ac.'
+              : 'Telegram Mini App backend tarafinda henuz tam etkin degil. TELEGRAM_BOT_TOKEN, bot username ve public WebApp URL gerekli.',
+        );
+      }
       const payload = await authenticateTelegram(initData);
       const token = payload?.session?.token;
       if (!token) throw new Error('Telegram oturumu baslatilamadi.');

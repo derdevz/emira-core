@@ -1,20 +1,38 @@
-import { connectFreighter, freighterAdapter, inspectFreighter } from './freighterAdapter';
 import { isTelegramSurface } from './telegram';
 import type { WalletAdapter, WalletConnection, WalletInspectionState } from './types';
-import { walletConnectAdapter } from './walletConnectAdapter';
 
 export type { WalletAdapter, WalletConnection, WalletInspectionState, WalletProvider } from './types';
 
-export function resolvePrimaryWalletAdapter(): WalletAdapter {
-  return isTelegramSurface() ? walletConnectAdapter : freighterAdapter;
+async function loadFreighterAdapter(): Promise<WalletAdapter> {
+  const { freighterAdapter } = await import('./freighterAdapter');
+  return freighterAdapter;
+}
+
+async function loadWalletConnectAdapter(): Promise<WalletAdapter> {
+  const { walletConnectAdapter } = await import('./walletConnectAdapter');
+  return walletConnectAdapter;
+}
+
+export async function resolvePrimaryWalletAdapter(): Promise<WalletAdapter> {
+  return isTelegramSurface() ? loadWalletConnectAdapter() : loadFreighterAdapter();
 }
 
 export async function inspectPrimaryWallet(): Promise<WalletInspectionState> {
-  return resolvePrimaryWalletAdapter().inspect();
+  const adapter = await resolvePrimaryWalletAdapter();
+  return adapter.inspect();
 }
 
 export async function connectPrimaryWallet(): Promise<WalletConnection> {
-  return resolvePrimaryWalletAdapter().connect();
+  const adapter = await resolvePrimaryWalletAdapter();
+  return adapter.connect();
 }
 
-export { connectFreighter, inspectFreighter };
+export async function inspectFreighter() {
+  const { inspectFreighter } = await import('./freighterAdapter');
+  return inspectFreighter();
+}
+
+export async function connectFreighter() {
+  const { connectFreighter } = await import('./freighterAdapter');
+  return connectFreighter();
+}

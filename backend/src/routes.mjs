@@ -87,14 +87,18 @@ export async function handleRoute(request, response, config) {
       horizonUrl: config.horizonUrl,
       marketplaceAddress: config.marketplaceAddress,
       marketContractId: config.marketContractId,
+      rewardsContractId: config.rewardsContractId,
       surfaces: {
         promo: 'Neaf-Web',
         app: 'Emira Core Web',
         miniApp: 'Telegram Mini App',
       },
       telegram: {
+        enabled: Boolean(config.telegramBotUsername && config.telegramBotToken && config.telegramWebAppUrl),
         botUsername: config.telegramBotUsername,
         webAppUrl: config.telegramWebAppUrl,
+        launchUrl: config.telegramLaunchUrl,
+        validationMode: config.telegramBotToken ? 'telegram-hmac' : config.allowTelegramMock ? 'mock-only' : 'disabled',
       },
       walletConnect: {
         projectIdConfigured: Boolean(config.walletConnectProjectId),
@@ -106,14 +110,16 @@ export async function handleRoute(request, response, config) {
 
   if (request.method === 'POST' && url.pathname === '/api/v1/auth/telegram') {
     const body = await readBody(request).catch(() => null);
-    const telegramUser =
-      verifyTelegramInitData(body?.initData, config.telegramBotToken) ??
-      parseTelegramInitData(body?.initData) ??
-      (body?.telegramUser && typeof body.telegramUser === 'object' ? body.telegramUser : null);
+    const initData = typeof body?.initData === 'string' ? body.initData : '';
+    const telegramUser = verifyTelegramInitData(initData, config.telegramBotToken)
+      ?? (config.allowTelegramMock ? parseTelegramInitData(initData) : null)
+      ?? (config.allowTelegramMock && body?.telegramUser && typeof body.telegramUser === 'object' ? body.telegramUser : null);
     if (!telegramUser || !telegramUser.id) {
-      json(response, 400, {
-        error: 'telegram initData or telegramUser required',
-        hint: 'Use mock:<username> during local development or provide a valid Telegram initData + TELEGRAM_BOT_TOKEN.',
+      json(response, 401, {
+        error: 'valid telegram initData required',
+        hint: config.allowTelegramMock
+          ? 'Provide valid Telegram initData or local mock data.'
+          : 'Open the app inside the configured Telegram Mini App and ensure TELEGRAM_BOT_TOKEN is set on the backend.',
       });
       return;
     }

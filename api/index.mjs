@@ -1,10 +1,7 @@
-import http from 'node:http';
-import { createRuntimeConfig } from './config.mjs';
-import { handleRoute } from './routes.mjs';
+import { createRuntimeConfig } from '../backend/src/config.mjs';
+import { handleRoute } from '../backend/src/routes.mjs';
 
-const port = Number(process.env.PORT ?? 8080);
-
-const server = http.createServer(async (request, response) => {
+export default async function handler(request, response) {
   try {
     await handleRoute(request, response, createRuntimeConfig());
   } catch (error) {
@@ -18,8 +15,4 @@ const server = http.createServer(async (request, response) => {
       }),
     );
   }
-});
-
-server.listen(port, () => {
-  console.log(`Emira backend listening on http://localhost:${port}`);
-});
+}

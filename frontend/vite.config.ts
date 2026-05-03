@@ -31,6 +31,17 @@ export default defineConfig(async () => {
   } catch {
     // Optional plugin integration is skipped outside the original local setup.
   }
+
+  function packageNameFromModule(id: string) {
+    const [, modulePath = ''] = id.split('node_modules/');
+    if (!modulePath) return null;
+    const parts = modulePath.split('/');
+    if (parts[0]?.startsWith('@')) {
+      return `${parts[0]}/${parts[1] ?? ''}`;
+    }
+    return parts[0] ?? null;
+  }
+
   return {
     plugins,
     base: resolveBasePath(),
@@ -39,6 +50,29 @@ export default defineConfig(async () => {
         output: {
           manualChunks(id: string) {
             if (!id.includes('node_modules')) return;
+            const pkg = packageNameFromModule(id);
+            if (pkg === '@walletconnect/core' || pkg === '@walletconnect/utils') return 'wc-runtime';
+            if (pkg?.startsWith('@walletconnect/')) return `wc-${pkg.split('/')[1]}`;
+            if (pkg?.startsWith('@reown/')) return `reown-${pkg.split('/')[1]}`;
+            if (pkg?.startsWith('@creit.tech/')) return 'stellar-wallets-kit';
+            if (pkg === '@stellar/freighter-api') return 'stellar-freighter';
+            if (id.includes('@stellar/stellar-sdk/lib/no-axios/horizon/')) return 'stellar-horizon';
+            if (id.includes('@stellar/stellar-sdk/lib/no-axios/rpc/')) return 'stellar-rpc';
+            if (id.includes('@stellar/stellar-sdk/lib/no-axios/contract/')) return 'stellar-contract';
+            if (id.includes('@stellar/stellar-sdk/lib/no-axios/bindings/')) return 'stellar-bindings';
+            if (id.includes('@stellar/stellar-sdk/lib/no-axios/http-client/')) return 'stellar-http';
+            if (
+              id.includes('@stellar/stellar-sdk/lib/no-axios/federation/') ||
+              id.includes('@stellar/stellar-sdk/lib/no-axios/friendbot/') ||
+              id.includes('@stellar/stellar-sdk/lib/no-axios/stellartoml/') ||
+              id.includes('@stellar/stellar-sdk/lib/no-axios/webauth/')
+            ) {
+              return 'stellar-extras';
+            }
+            if (pkg === '@stellar/stellar-sdk') return 'stellar-sdk';
+            if (pkg?.startsWith('@stellar/')) return `stellar-${pkg.split('/')[1]}`;
+            if (pkg === 'ox') return 'wallet-ox';
+            if (pkg === '@noble/hashes' || pkg === '@noble/curves') return 'wallet-noble';
             if (id.includes('@stellar')) return 'stellar';
             if (id.includes('react-router-dom')) return 'router';
             if (id.includes('framer-motion')) return 'motion';
