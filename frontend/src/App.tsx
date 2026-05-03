@@ -650,15 +650,19 @@ function totalOwnedCats(inventory: OwnedInventory) {
   return Object.values(inventory).reduce((sum, count) => sum + count, 0);
 }
 
+function normalizeInventory(inventory: OwnedInventory) {
+  return Object.fromEntries(Object.entries(inventory).filter(([, count]) => Number(count) > 0));
+}
+
 function visibleOwnedCount(inventory: OwnedInventory, listedNames: string[], name: string) {
   return Math.max(0, (inventory[name] ?? 0) - (listedNames.includes(name) ? 1 : 0));
 }
 
 function addOwnedCat(inventory: OwnedInventory, name: string, amount = 1) {
-  return {
+  return normalizeInventory({
     ...inventory,
     [name]: (inventory[name] ?? 0) + amount,
-  };
+  });
 }
 
 function createStarterInventory(): OwnedInventory {
@@ -744,7 +748,7 @@ function readWalletProfileSnapshot(address: string): WalletProfileSnapshot | nul
     return {
       balance: Number(parsed.balance) || 0,
       tapCount: Number(parsed.tapCount) || 0,
-      owned: parsed.owned && typeof parsed.owned === 'object' ? parsed.owned : createStarterInventory(),
+      owned: parsed.owned && typeof parsed.owned === 'object' ? normalizeInventory(parsed.owned) : createStarterInventory(),
       upgradeLevels: normalizeUpgradeLevels(parsed.upgradeLevels),
       selectedTreeId: typeof parsed.selectedTreeId === 'string' ? parsed.selectedTreeId : (homeTreeOptions[0]?.id ?? ''),
       ownedTreeIds: Array.isArray(parsed.ownedTreeIds)
@@ -881,7 +885,7 @@ function GameApp() {
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>(() => createStarterUpgradeLevels());
   const [owned, setOwned] = useState<OwnedInventory>(() => createStarterInventory());
-  const [listedNftNames, setListedNftNames] = useState<string[]>(() => seededMarketListings.map((listing) => listing.name));
+  const [listedNftNames, setListedNftNames] = useState<string[]>([]);
   const [lastDrop, setLastDrop] = useState<CatDropResult | null>(null);
   const [dropToast, setDropToast] = useState<CatDropResult | null>(null);
   const [lootboxReward, setLootboxReward] = useState<LootboxReward | null>(null);
@@ -1237,7 +1241,7 @@ function GameApp() {
             action: { type: 'cancel', tokenId: nft.tokenId },
           })
         : null;
-      const payload = await prepareMarketCancel(nft.tokenId);
+      const payload = await prepareMarketCancel(nft.tokenId).catch(() => ({ ok: true, offline: true }));
       setListedNftNames((current) => current.filter((item) => item !== name));
       setMarketListings((current) => current.filter((item) => item.tokenId !== nft.tokenId));
       return { ...payload, chainReceipt };
@@ -1258,7 +1262,20 @@ function GameApp() {
       name: nft.name,
       rarity: nft.rarity,
       provider: wallet.provider,
-    });
+    }).catch(() => ({
+      ok: true,
+      offline: true,
+      listing: {
+        tokenId: nft.tokenId,
+        name: nft.name,
+        rarity: nft.rarity,
+        owner: ownerAddress,
+        priceXlm: listingPrice,
+        settlement: 'XLM',
+        network: wallet.network,
+        requiresFreighter: true,
+      } satisfies MarketListing,
+    }));
     setListedNftNames((current) => [...new Set([...current, name])]);
     if (payload?.listing) {
       setMarketListings((current) => {

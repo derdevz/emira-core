@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           rm -rf node_modules package-lock.json
-          rnpm install --include=optional
+          npm install --include=optional
 
       - name: Install Linux native optional packages
         run: npm install @rollup/rollup-linux-x64-gnu lightningcss-linux-x64-gnu @tailwindcss/oxide-linux-x64-gnu --no-save
