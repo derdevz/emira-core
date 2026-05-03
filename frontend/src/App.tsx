@@ -604,12 +604,6 @@ function normalizeListings(listings: MarketListing[]) {
   return [...byToken.values()];
 }
 
-function uniqueOwnedNames(inventory: OwnedInventory) {
-  return Object.entries(inventory)
-    .filter(([, count]) => count > 0)
-    .map(([name]) => name);
-}
-
 function totalOwnedCats(inventory: OwnedInventory) {
   return Object.values(inventory).reduce((sum, count) => sum + count, 0);
 }
@@ -712,8 +706,8 @@ function GameApp() {
   const [selectedProfileCatNames, setSelectedProfileCatNames] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
-  const [walletMessage, setWalletMessage] = useState('Stellar cuzdan baglantisi kontrol ediliyor.');
-  const [telegramMessage, setTelegramMessage] = useState(telegramContext.isTelegram ? 'Telegram oturumu kontrol ediliyor.' : 'Telegram Mini App bagli degil.');
+  const [, setWalletMessage] = useState('Stellar cuzdan baglantisi kontrol ediliyor.');
+  const [, setTelegramMessage] = useState(telegramContext.isTelegram ? 'Telegram oturumu kontrol ediliyor.' : 'Telegram Mini App bagli degil.');
   const [telegramSessionToken, setTelegramSessionToken] = useState<string | null>(() => localStorage.getItem('emira.telegram.session'));
   const [currentPlayer, setCurrentPlayer] = useState<ProfileRecord | null>(null);
   const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
@@ -1285,9 +1279,6 @@ function GameApp() {
                 onSelectedCatNamesChange={setSelectedProfileCatNames}
                 profileDisplayName={profileDisplayName}
                 onProfileDisplayNameChange={setProfileDisplayName}
-                wallet={wallet}
-                walletMessage={walletMessage}
-                telegramMessage={telegramMessage}
                 telegramSessionToken={telegramSessionToken}
                 currentPlayer={currentPlayer}
                 onTelegramLogin={handleTelegramLogin}
@@ -1736,10 +1727,13 @@ function CreateListingModal({
   const priceValue = Number(price);
   const canSubmit = Boolean(selected) && Number.isFinite(priceValue) && priceValue > 0;
 
-  useEffect(() => {
-    if (!selected) return;
-    setPrice(String(Math.max(1, Math.round(selected.price / 100))));
-  }, [selected?.name]);
+  const handleSelectedNameChange = (name: string) => {
+    setSelectedName(name);
+    const nextSelected = items.find((item) => item.name === name);
+    if (nextSelected) {
+      setPrice(String(Math.max(1, Math.round(nextSelected.price / 100))));
+    }
+  };
 
   const content = (
     <div className="fixed inset-0 z-50 grid place-items-center bg-text-primary/25 px-4 backdrop-blur-sm" onClick={onClose}>
@@ -1768,7 +1762,7 @@ function CreateListingModal({
                 <select
                   className="rounded-2xl border border-surface bg-deep/70 px-4 py-3 text-sm text-text-primary outline-none"
                   value={selectedName}
-                  onChange={(event) => setSelectedName(event.target.value)}
+                  onChange={(event) => handleSelectedNameChange(event.target.value)}
                 >
                   {items.map((item) => (
                     <option key={item.name} value={item.name}>
@@ -2036,7 +2030,7 @@ function WalkingProfileCat({ cat, index }: { cat: NftItem; index: number }) {
       moveTimer = window.setTimeout(move, 4000 + Math.random() * 4000);
     }, target.delay);
     return () => window.clearTimeout(moveTimer);
-  }, [index]);
+  }, [index, target.delay]);
 
   useEffect(() => {
     let hideTimer = 0;
@@ -2214,9 +2208,6 @@ function ProfilePage({
   onSelectedCatNamesChange,
   profileDisplayName,
   onProfileDisplayNameChange,
-  wallet,
-  walletMessage,
-  telegramMessage,
   telegramSessionToken,
   currentPlayer,
   onTelegramLogin,
@@ -2236,9 +2227,6 @@ function ProfilePage({
   onSelectedCatNamesChange: (names: string[]) => void;
   profileDisplayName: string;
   onProfileDisplayNameChange: (name: string) => void;
-  wallet: WalletConnection | null;
-  walletMessage: string;
-  telegramMessage: string;
   telegramSessionToken: string | null;
   currentPlayer: ProfileRecord | null;
   onTelegramLogin: () => Promise<void>;
@@ -2272,10 +2260,6 @@ function ProfilePage({
     .filter(Boolean)
     .slice(0, 3) as NftItem[];
   const displayName = isOwnProfile ? profileDisplayName : (remoteProfile?.displayName ?? viewedPlayer);
-
-  useEffect(() => {
-    setDraftName(profileDisplayName);
-  }, [profileDisplayName]);
 
   useEffect(() => {
     if (!isOwnProfile) return;
@@ -2332,7 +2316,10 @@ function ProfilePage({
               <button
                 className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
                 type="button"
-                onClick={() => setIsEditingName(true)}
+                onClick={() => {
+                  setDraftName(profileDisplayName);
+                  setIsEditingName(true);
+                }}
               >
                 Ismi degistir
               </button>
