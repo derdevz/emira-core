@@ -1,0 +1,14 @@
+{
+  "name": "@emira/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Light hybrid backend scaffold for Emira Core.",
+  "scripts": {
+    "dev": "node --watch src/server.mjs",
+    "start": "node src/server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -7,9 +7,14 @@ artifacts for the final Rise In delivery.
 ## Current Scope
 
 - Clicker game frontend with separate pages for home, NFT museum, market, profile, and leaderboard.
+- Lightweight hybrid backend scaffold for profiles, leaderboards, tap validation, and chain-preparation APIs.
+- Wallet abstraction scaffold for Freighter-first web and future WalletConnect Telegram/mobile flows.
+- Telegram auth, session-token, and wallet-link backend scaffold.
 - Freighter wallet detection, connect flow, wallet menu, address copy, switch, and local disconnect actions.
 - Soroban smart contract scaffold for reward and player progress snapshots.
+- Soroban marketplace contract scaffold for XLM-based Stellar market flows.
 - Soroban-oriented architecture notes for rewards, NFT ownership, seasonal leaderboards, and off-chain progress.
+- Telegram Mini App integration plan for retention gameplay and mobile wallet flows.
 - Dockerized frontend build and runtime.
 - Submission checklist, screenshots, and transaction hash placeholder.
 
@@ -31,9 +36,14 @@ artifacts for the final Rise In delivery.
 ```text
 docs/
   architecture.md        Game, backend, Soroban, and Freighter architecture notes
+  telegram-mini-app.md   Telegram Mini App scope and wallet plan
   screenshots/           Project screenshots for hackathon submission
   submission/            Submission checklist and transaction hash placeholder
+backend/
+  src/                   Lightweight hybrid API scaffold
+  package.json           Backend scripts
 contracts/
+  emira_marketplace/     Soroban smart contract scaffold for marketplace state
   emira_rewards/         Soroban smart contract scaffold for player rewards
 frontend/
   src/                   React application
@@ -45,6 +55,19 @@ docker-compose.yml       Root Docker entrypoint
 ```
 
 ## Local Development
+
+```powershell
+cd backend
+npm run dev
+```
+
+Backend default URL:
+
+```text
+http://localhost:8080
+```
+
+Then in a second terminal:
 
 ```powershell
 cd frontend
@@ -69,6 +92,8 @@ http://localhost:5173
 ## Soroban Contract
 
 The repository includes a Soroban contract workspace under `contracts/emira_rewards`.
+
+Marketplace scaffold also exists under `contracts/emira_marketplace`.
 
 Current contract scaffold responsibilities:
 
@@ -95,15 +120,32 @@ Copy the example file before local development:
 Copy-Item frontend/.env.example frontend/.env
 ```
 
-Key variables:
+Key frontend variables:
 
 - `VITE_API_BASE_URL`: backend API URL, default `http://localhost:8080`
 - `VITE_STELLAR_NETWORK`: expected Stellar network, default `testnet`
 - `VITE_SOROBAN_RPC_URL`: Soroban RPC URL
+- `VITE_WALLETCONNECT_PROJECT_ID`: WalletConnect project id for Telegram/mobile surfaces
+- `VITE_TELEGRAM_BOT_USERNAME`: Mini App bot username
+- `VITE_TELEGRAM_WEBAPP_URL`: public Telegram Mini App URL
+
+Key backend variables:
+
+- `PORT`: backend port
+- `STELLAR_NETWORK`: expected network for chain actions
+- `SOROBAN_RPC_URL`: Soroban RPC URL
+- `STELLAR_HORIZON_URL`: Horizon URL for transaction submission
+- `STELLAR_MARKETPLACE_ADDRESS`: destination account for XLM market settlement
+- `SOROBAN_MARKET_CONTRACT_ID`: marketplace contract id for prepared on-chain actions
+- `TELEGRAM_BOT_USERNAME`: Telegram bot username used by the Mini App
+- `TELEGRAM_WEBAPP_URL`: Telegram Mini App URL
+- `WALLETCONNECT_PROJECT_ID`: WalletConnect project id for mobile / Telegram signing
+- `SESSION_JWT_SECRET`: backend session signing secret
+- `POSTGRES_URL`: persistent database connection string
 
 ## Planned Backend And Contract Direction
 
-High-frequency gameplay state should stay off-chain:
+High-frequency gameplay state should stay off-chain in the backend:
 
 - taps
 - energy
@@ -120,6 +162,14 @@ Soroban should store durable economic state:
 
 See [docs/architecture.md](docs/architecture.md) for the detailed plan.
 See [docs/roadmap.md](docs/roadmap.md) for the staged development roadmap.
+See [docs/telegram-mini-app.md](docs/telegram-mini-app.md) for the Telegram Mini App scope.
+
+Backend API now also includes:
+
+- `POST /api/v1/auth/telegram`
+- `GET /api/v1/auth/session`
+- `POST /api/v1/wallet/link`
+- `GET /api/v1/wallet/link/:playerId`
 
 ## GitHub Workflow
 

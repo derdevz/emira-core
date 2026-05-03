@@ -24,7 +24,9 @@ import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocatio
 import neafIcon from './assets/neaf.png';
 import ovaBackground from './assets/ova.jpg';
 import { useLeafSystem } from './hooks/useLeafSystem';
-import { connectFreighter, inspectFreighter, type WalletConnection } from './lib/freighter';
+import { authenticateTelegram, fetchLeaderboard, fetchMarketListings, fetchProfile, fetchSession, linkWallet } from './lib/apiClient';
+import { connectPrimaryWallet, inspectPrimaryWallet, type WalletConnection } from './lib/wallet';
+import { readTelegramWebAppContext } from './lib/wallet/telegram';
 import { isMarketplaceConfigured, resolveMarketplaceAddress, signAndSubmitMarketPayment } from './lib/stellarMarket';
 
 type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connected' | 'error';
@@ -32,6 +34,8 @@ type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
 type UpgradeKind = 'tap' | 'passive' | 'luck';
 type PickerOption = { id: string; name: string; image: string; price?: number };
 type LeaderboardPlayer = {
+  id: string;
+  username: string;
   name: string;
   badge: string;
   taps: number;
@@ -42,7 +46,30 @@ type LeaderboardPlayer = {
   accent: string;
 };
 
+type MarketListing = {
+  tokenId: number;
+  name: string;
+  rarity: Rarity;
+  owner: string;
+  priceXlm: number;
+  settlement: string;
+  network: string;
+  requiresFreighter: boolean;
+};
+
+type ProfileRecord = {
+  id: string;
+  username: string;
+  displayName: string;
+  badge: string;
+  taps: number;
+  balanceNeaf: number;
+  ownedCount: number;
+  walletAddress: string | null;
+};
+
 const freighterInstallUrl = 'https://www.freighter.app/';
+const promoSiteUrl = import.meta.env.VITE_PROMO_SITE_URL ?? 'https://sopwit.github.io/Neaf-Web/';
 
 const navigation = [
   { name: 'Ana Sayfa', path: '/' },
@@ -505,6 +532,7 @@ export default function App() {
 function GameApp() {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
+  const telegramContext = readTelegramWebAppContext();
   const [isOpen, setIsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [balance, setBalance] = useState(128450);
@@ -528,16 +556,21 @@ function GameApp() {
   const [listedNftNames, setListedNftNames] = useState<string[]>(() => nftCollection.filter((nft) => nft.listed).map((nft) => nft.name));
   const [wallet, setWallet] = useState<WalletConnection | null>(null);
   const [walletState, setWalletState] = useState<WalletUiState>('checking');
-  const [walletMessage, setWalletMessage] = useState('Freighter kontrol ediliyor.');
+  const [walletMessage, setWalletMessage] = useState('Stellar cuzdan baglantisi kontrol ediliyor.');
+  const [telegramMessage, setTelegramMessage] = useState(telegramContext.isTelegram ? 'Telegram oturumu kontrol ediliyor.' : 'Telegram Mini App bagli degil.');
+  const [telegramSessionToken, setTelegramSessionToken] = useState<string | null>(() => localStorage.getItem('emira.telegram.session'));
+  const [currentPlayer, setCurrentPlayer] = useState<ProfileRecord | null>(null);
+  const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
+  const [marketListings, setMarketListings] = useState<MarketListing[]>([]);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   useEffect(() => {
-    inspectFreighter()
+    inspectPrimaryWallet()
       .then((status) => {
         if (status.state === 'connected') {
           setWallet(status.connection);
           setWalletState('connected');
-          setWalletMessage('Freighter ile giris yapildi.');
+          setWalletMessage(`${status.connection.provider === 'freighter' ? 'Freighter' : 'WalletConnect'} ile giris yapildi.`);
           return;
         }
 
@@ -548,21 +581,90 @@ function GameApp() {
       .catch(() => {
         setWallet(null);
         setWalletState('error');
-        setWalletMessage('Freighter durumu okunamadi.');
+        setWalletMessage('Stellar cuzdan durumu okunamadi.');
       });
   }, []);
+
+  useEffect(() => {
+    fetchMarketListings()
+      .then((payload) => {
+        setMarketListings(payload.items ?? []);
+        setListedNftNames((payload.items ?? []).map((item: MarketListing) => item.name));
+      })
+      .catch(() => {});
+
+    fetchLeaderboard('taps')
+      .then((payload) => {
+        setRemoteLeaderboard(payload.items ?? []);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!telegramSessionToken) return;
+
+    fetchSession(telegramSessionToken)
+      .then((payload) => {
+        if (!payload?.ok || !payload.player) {
+          localStorage.removeItem('emira.telegram.session');
+          setTelegramSessionToken(null);
+          return;
+        }
+
+        setCurrentPlayer(payload.player);
+        setTelegramMessage(`Telegram oturumu aktif: ${payload.player.username}`);
+      })
+      .catch(() => {
+        localStorage.removeItem('emira.telegram.session');
+        setTelegramSessionToken(null);
+      });
+  }, [telegramSessionToken]);
+
+  useEffect(() => {
+    if (!telegramContext.isTelegram || telegramSessionToken) return;
+
+    const initData = telegramContext.initData || `mock:${telegramContext.username ?? 'emira_player'}`;
+
+    authenticateTelegram(initData)
+      .then((payload) => {
+        const token = payload?.session?.token;
+        if (!token) return;
+        localStorage.setItem('emira.telegram.session', token);
+        setTelegramSessionToken(token);
+        setCurrentPlayer(payload.player ?? null);
+        setTelegramMessage(`Telegram oturumu aktif: ${payload.player?.username ?? '@guest'}`);
+      })
+      .catch((error) => {
+        setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
+      });
+  }, [telegramContext.initData, telegramContext.isTelegram, telegramContext.username, telegramSessionToken]);
+
+  useEffect(() => {
+    if (!wallet || !telegramSessionToken) return;
+
+    linkWallet({
+      sessionToken: telegramSessionToken,
+      address: wallet.address,
+      provider: wallet.provider,
+    })
+      .then((payload) => {
+        if (!payload?.player) return;
+        setCurrentPlayer(payload.player);
+      })
+      .catch(() => {});
+  }, [telegramSessionToken, wallet]);
 
   const handleConnectWallet = async () => {
     setWalletMenuOpen(false);
     setWalletState('connecting');
-    setWalletMessage('Freighter izni bekleniyor.');
+    setWalletMessage('Stellar cuzdan izni bekleniyor.');
     try {
-      const connection = await connectFreighter();
+      const connection = await connectPrimaryWallet();
       setWallet(connection);
       setWalletState('connected');
-      setWalletMessage('Freighter ile giris yapildi.');
+      setWalletMessage(`${connection.provider === 'freighter' ? 'Freighter' : 'WalletConnect'} ile giris yapildi.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Freighter baglantisi basarisiz oldu.';
+      const message = error instanceof Error ? error.message : 'Stellar cuzdan baglantisi basarisiz oldu.';
       setWallet(null);
       setWalletState(message.includes('bulunamadi') ? 'missing' : 'error');
       setWalletMessage(message);
@@ -574,6 +676,21 @@ function GameApp() {
     setWalletMenuOpen(false);
     setWalletState('ready');
     setWalletMessage('Cuzdan oturumu bu uygulamada kapatildi.');
+  };
+
+  const handleTelegramLogin = async () => {
+    try {
+      const initData = telegramContext.initData || `mock:${telegramContext.username ?? 'emira_player'}`;
+      const payload = await authenticateTelegram(initData);
+      const token = payload?.session?.token;
+      if (!token) throw new Error('Telegram oturumu baslatilamadi.');
+      localStorage.setItem('emira.telegram.session', token);
+      setTelegramSessionToken(token);
+      setCurrentPlayer(payload.player ?? null);
+      setTelegramMessage(`Telegram oturumu aktif: ${payload.player?.username ?? '@guest'}`);
+    } catch (error) {
+      setTelegramMessage(error instanceof Error ? error.message : 'Telegram oturumu acilamadi.');
+    }
   };
 
   const handleCopyAddress = async () => {
@@ -624,7 +741,7 @@ function GameApp() {
 
   const handlePurchaseNft = async (nft: NftItem) => {
     if (!wallet) {
-      throw new Error('XLM ile satin alma icin Freighter baglantisi gerekli.');
+      throw new Error('XLM ile satin alma icin Stellar cuzdan baglantisi gerekli.');
     }
 
     const receipt = await signAndSubmitMarketPayment({
@@ -636,18 +753,61 @@ function GameApp() {
 
     setOwned((current) => (current.includes(nft.name) ? current : [...current, nft.name]));
     setListedNftNames((current) => current.filter((item) => item !== nft.name));
+    setMarketListings((current) => current.filter((item) => item.name !== nft.name));
     return receipt;
   };
 
+  const marketItems = useMemo(() => {
+    const listedByName = new Map(marketListings.map((item) => [item.name, item]));
+
+    const listedItems = nftCollection
+      .filter((item) => listedByName.has(item.name))
+      .map((item) => {
+        const listing = listedByName.get(item.name);
+        return listing
+          ? {
+              ...item,
+              price: listing.priceXlm,
+              owner: listing.owner,
+              rarity: listing.rarity,
+            }
+          : item;
+      });
+
+    const ownedUnlisted = nftCollection
+      .filter((item) => owned.includes(item.name) && !listedByName.has(item.name))
+      .map((item) => ({
+        ...item,
+        owner: currentPlayer?.displayName ?? 'Sen',
+      }));
+
+    return [...listedItems, ...ownedUnlisted];
+  }, [currentPlayer?.displayName, marketListings, owned]);
+
   const leaderboardPlayers = useMemo(
-    () => [
-      { name: 'Emira Dreamer', badge: 'Yumusak Isik', taps: tapPower, balance, ownedCount: owned.length, isSelf: true, avatar: profileAvatar, accent: 'from-sky-200 to-cyan-300' },
-      { name: 'Cloud Paws', badge: 'Sabah Yildizi', taps: 164, balance: 884200, ownedCount: 12, isSelf: false, accent: 'from-violet-200 to-fuchsia-300' },
-      { name: 'Mint Whisker', badge: 'Ay Cizgisi', taps: 138, balance: 761040, ownedCount: 9, isSelf: false, accent: 'from-emerald-200 to-lime-300' },
-      { name: 'Soroban Bloom', badge: 'Altin Esinti', taps: 121, balance: 640800, ownedCount: 7, isSelf: false, accent: 'from-amber-200 to-orange-300' },
-      { name: 'Nova Nest', badge: 'Gun Batimi', taps: 88, balance: 118030, ownedCount: 4, isSelf: false, accent: 'from-rose-200 to-pink-300' },
-    ],
-    [balance, owned.length, profileAvatar, tapPower],
+    () =>
+      remoteLeaderboard.map((player, index) => {
+        const isSelf = currentPlayer ? player.id === currentPlayer.id : player.username === '@emira_player';
+        return {
+          id: player.id,
+          username: player.username,
+          name: player.displayName,
+          badge: player.badge,
+          taps: isSelf ? tapPower : player.taps,
+          balance: isSelf ? balance : player.balanceNeaf,
+          ownedCount: isSelf ? owned.length : player.ownedCount,
+          isSelf,
+          avatar: isSelf ? profileAvatar : null,
+          accent: [
+            'from-sky-200 to-cyan-300',
+            'from-violet-200 to-fuchsia-300',
+            'from-emerald-200 to-lime-300',
+            'from-amber-200 to-orange-300',
+            'from-rose-200 to-pink-300',
+          ][index % 5],
+        };
+      }),
+    [balance, currentPlayer, owned.length, profileAvatar, remoteLeaderboard, tapPower],
   );
 
   return (
@@ -693,17 +853,27 @@ function GameApp() {
           </div>
 
           <div className="hidden justify-end md:flex">
-            <WalletMenu
-              wallet={wallet}
-              state={walletState}
-              copied={copiedAddress}
-              onConnect={handleConnectWallet}
-              onCopy={handleCopyAddress}
-              onDisconnect={handleDisconnectWallet}
-              onSwitch={handleConnectWallet}
-              open={walletMenuOpen}
-              onOpenChange={setWalletMenuOpen}
-            />
+            <div className="flex items-center gap-3">
+              <a
+                className="rounded-full border border-surface bg-white px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                href={promoSiteUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Neaf Web
+              </a>
+              <WalletMenu
+                wallet={wallet}
+                state={walletState}
+                copied={copiedAddress}
+                onConnect={handleConnectWallet}
+                onCopy={handleCopyAddress}
+                onDisconnect={handleDisconnectWallet}
+                onSwitch={handleConnectWallet}
+                open={walletMenuOpen}
+                onOpenChange={setWalletMenuOpen}
+              />
+            </div>
           </div>
 
           <button className="justify-self-end text-text-primary md:hidden" type="button" onClick={() => setIsOpen((current) => !current)}>
@@ -730,6 +900,14 @@ function GameApp() {
                   {link.name}
                 </NavLink>
               ))}
+              <a
+                className="font-mono text-sm uppercase tracking-[0.18em] text-text-secondary hover:text-text-primary"
+                href={promoSiteUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Neaf Web
+              </a>
               {walletState === 'missing' ? (
                 <a
                   className="inline-flex w-fit rounded-full border border-aurora-mid/20 bg-aurora-mid px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-white"
@@ -783,6 +961,7 @@ function GameApp() {
             path="/market"
             element={
               <MarketPage
+                marketItems={marketItems}
                 wallet={wallet}
                 walletState={walletState}
                 ownedNftNames={owned}
@@ -806,6 +985,10 @@ function GameApp() {
                 onAvatarChange={setProfileAvatar}
                 wallet={wallet}
                 walletMessage={walletMessage}
+                telegramMessage={telegramMessage}
+                telegramSessionToken={telegramSessionToken}
+                currentPlayer={currentPlayer}
+                onTelegramLogin={handleTelegramLogin}
               />
             }
           />
@@ -1013,6 +1196,7 @@ function MuseumPage() {
 }
 
 function MarketPage({
+  marketItems,
   wallet,
   walletState,
   ownedNftNames,
@@ -1020,6 +1204,7 @@ function MarketPage({
   onToggleListing,
   onPurchaseNft,
 }: {
+  marketItems: NftItem[];
   wallet: WalletConnection | null;
   walletState: WalletUiState;
   ownedNftNames: string[];
@@ -1032,8 +1217,6 @@ function MarketPage({
   const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('all');
   const [sortMode, setSortMode] = useState<'low' | 'high'>('low');
   const [isCompactGrid, setIsCompactGrid] = useState(false);
-
-  const marketItems = nftCollection;
 
   const filteredItems = marketItems
     .filter((nft) => (rarityFilter === 'all' ? true : nft.rarity === rarityFilter))
@@ -1079,7 +1262,7 @@ function MarketPage({
                 onClick={() => setRarityFilter(rarity as 'all' | Rarity)}
               >
                 <span>{rarity === 'all' ? 'Tum seviyeler' : rarity}</span>
-                <span className="text-xs text-text-muted">{rarity === 'all' ? nftCollection.length : nftCollection.filter((nft) => nft.rarity === rarity).length}</span>
+                <span className="text-xs text-text-muted">{rarity === 'all' ? marketItems.length : marketItems.filter((nft) => nft.rarity === rarity).length}</span>
               </button>
             ))}
           </div>
@@ -1299,7 +1482,7 @@ function MarketDetailModal({
                   onClick={async () => {
                     try {
                       setSubmitState('submitting');
-                      setSubmitMessage('Freighter uzerinde XLM islemi imzalaniyor.');
+                      setSubmitMessage(`${wallet?.provider === 'walletconnect' ? 'WalletConnect' : 'Freighter'} uzerinde XLM islemi imzalaniyor.`);
                       const receipt = await onPurchase(nft);
                       setSubmitState('success');
                       setSubmitMessage(`Islem gonderildi: ${receipt.hash}`);
@@ -1312,7 +1495,7 @@ function MarketDetailModal({
                   {submitState === 'submitting' ? 'Imza bekleniyor' : 'XLM ile satin al'}
                 </button>
               ) : walletState !== 'connected' ? (
-                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Satin alma icin Freighter baglanmali.</p>
+                <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Satin alma icin Stellar cuzdan baglanmali.</p>
               ) : (
                 <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Pazar alici adresi ayarlanmamis. `VITE_STELLAR_MARKETPLACE_ADDRESS` gerekli.</p>
               )}
@@ -1337,6 +1520,10 @@ function ProfilePage({
   onAvatarChange,
   wallet,
   walletMessage,
+  telegramMessage,
+  telegramSessionToken,
+  currentPlayer,
+  onTelegramLogin,
 }: {
   selectedBackground?: { id: string; name: string; image: string };
   backgroundOptions: PickerOption[];
@@ -1348,12 +1535,37 @@ function ProfilePage({
   onAvatarChange: (url: string | null) => void;
   wallet: WalletConnection | null;
   walletMessage: string;
+  telegramMessage: string;
+  telegramSessionToken: string | null;
+  currentPlayer: ProfileRecord | null;
+  onTelegramLogin: () => Promise<void>;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [remoteProfile, setRemoteProfile] = useState<ProfileRecord | null>(currentPlayer);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const location = useLocation();
-  const viewedPlayer = new URLSearchParams(location.search).get('player') ?? '@emira_player';
-  const isOwnProfile = viewedPlayer === '@emira_player';
+  const activeUsername = currentPlayer?.username ?? '@emira_player';
+  const viewedPlayer = new URLSearchParams(location.search).get('player') ?? activeUsername;
+  const isOwnProfile = viewedPlayer === activeUsername;
+
+  useEffect(() => {
+    fetchProfile(viewedPlayer.replace(/^@/, ''))
+      .then((payload) => {
+        setRemoteProfile(payload.player ?? null);
+      })
+      .catch(() => {
+        setRemoteProfile(isOwnProfile ? currentPlayer : null);
+      });
+  }, [currentPlayer, isOwnProfile, viewedPlayer]);
+
+  const displayName = remoteProfile?.displayName ?? viewedPlayer;
+  const statusCopy = isOwnProfile
+    ? wallet
+      ? `${wallet.network} agi aktif`
+      : telegramSessionToken
+        ? telegramMessage
+        : `${walletMessage} ${telegramMessage}`
+    : 'Topluluk profili goruntuleniyor.';
 
   return (
     <div>
@@ -1369,6 +1581,21 @@ function ProfilePage({
             >
               <Settings2 size={20} />
             </button>
+            {!telegramSessionToken ? (
+              <button
+                className="rounded-full border border-surface bg-white px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-text-secondary transition hover:border-aurora-mid hover:text-text-primary"
+                type="button"
+                onClick={() => {
+                  void onTelegramLogin();
+                }}
+              >
+                Telegram bagla
+              </button>
+            ) : (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-emerald-700">
+                Telegram aktif
+              </span>
+            )}
           </div>
         ) : null}
         <div className="relative overflow-hidden rounded-[2rem] border border-surface bg-white shadow-sm">
@@ -1387,8 +1614,9 @@ function ProfilePage({
             <div className="absolute inset-0 bg-gradient-to-t from-white/92 via-white/18 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-8">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Profil arka plan preview</p>
-              <h3 className="mt-3 font-display text-4xl font-extrabold text-text-primary">{viewedPlayer}</h3>
-              <p className="mt-2 max-w-xl text-sm text-text-secondary">{isOwnProfile && wallet ? `${wallet.network} agi aktif` : isOwnProfile ? walletMessage : 'Topluluk profili goruntuleniyor.'}</p>
+              <h3 className="mt-3 font-display text-4xl font-extrabold text-text-primary">{displayName}</h3>
+              <p className="mt-2 text-sm text-text-secondary">{viewedPlayer}</p>
+              <p className="mt-2 max-w-xl text-sm text-text-secondary">{statusCopy}</p>
             </div>
           </div>
         </div>
@@ -1483,7 +1711,7 @@ function LeaderboardPage({
               <button
                 className="mt-2 rounded-full border border-aurora-mid/20 bg-aurora-mid/8 px-3 py-1 font-soft text-xs text-aurora-start"
                 type="button"
-                onClick={() => navigate(`/profile?player=${encodeURIComponent(player.name)}`)}
+                onClick={() => navigate(`/profile?player=${encodeURIComponent(player.username)}`)}
               >
                 Yolculuk
               </button>
@@ -1685,7 +1913,9 @@ function WalletMenu({
       {open ? (
         <div className="absolute right-0 top-16 w-80 rounded-[1.25rem] border border-surface bg-white p-3 shadow-lg">
           <div className="border-b border-surface px-3 pb-3">
-            <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{wallet.network}</p>
+            <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">
+              {wallet.provider === 'freighter' ? 'Freighter' : 'WalletConnect'} · {wallet.network}
+            </p>
             <p className="mt-1 break-all font-mono text-sm text-text-primary">{wallet.address}</p>
           </div>
           <button className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-text-secondary hover:bg-deep hover:text-text-primary" type="button" onClick={onCopy}>
@@ -1715,7 +1945,7 @@ function walletButtonLabel(state: WalletUiState, wallet: WalletConnection | null
   if (state === 'checking') return 'Kontrol';
   if (state === 'connecting') return 'Bekleniyor';
   if (state === 'missing') return 'Freighter kur';
-  return 'Freighter giris';
+  return 'Cuzdan bagla';
 }
 
 function HomeStat({ label, value }: { label: string; value: string }) {

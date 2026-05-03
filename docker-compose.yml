@@ -1,4 +1,20 @@
 services:
+  backend:
+    image: node:20-alpine
+    container_name: emira-backend
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: ["node", "src/server.mjs"]
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      STELLAR_NETWORK: testnet
+      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -8,6 +24,7 @@ services:
       - "5173:80"
     environment:
       NODE_ENV: production
+      VITE_API_BASE_URL: http://backend:8080
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
@@ -15,3 +32,5 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+    depends_on:
+      - backend

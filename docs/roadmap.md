@@ -4,6 +4,7 @@
 
 - Separate game pages for home, NFT museum, market, profile, and leaderboard.
 - Freighter detection and wallet login.
+- Wallet abstraction layer for Freighter and WalletConnect.
 - Wallet menu actions: copy address, switch wallet, local disconnect.
 - Dockerized frontend runtime.
 - Frontend CI for lint and production build.
@@ -11,10 +12,13 @@
 ## Phase 2 - Backend Foundation
 
 - Telegram auth validation.
+- Session tokens and wallet-link records.
 - Player progress API.
 - Server-authoritative tap and energy logic.
 - Daily task and streak system.
 - Leaderboard read model.
+- Market preparation endpoint for Freighter-signed XLM purchases.
+- Public promo metrics endpoint for Neaf-Web.
 
 ## Phase 3 - Soroban Contracts
 
@@ -23,6 +27,7 @@
 - NFT collection or NFT ownership integration.
 - Claim transaction builder.
 - Contract event indexing.
+- WalletConnect purchase flow for Telegram/mobile.
 
 ## Phase 4 - Economy And Anti-Cheat
 
@@ -38,3 +43,4 @@
 - Contract deployment scripts.
 - Database migrations.
 - Staging and production deployment workflows.
+- Telegram Mini App packaging and release flow.
