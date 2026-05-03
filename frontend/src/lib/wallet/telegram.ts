@@ -32,9 +32,11 @@ declare global {
 export function readTelegramWebAppContext(): TelegramWebAppContext {
   const webApp = window.Telegram?.WebApp;
   const user = webApp?.initDataUnsafe?.user;
+  const initData = webApp?.initData?.trim();
+  const hasTelegramSession = Boolean(initData || user?.id);
 
   return {
-    isTelegram: Boolean(webApp),
+    isTelegram: hasTelegramSession,
     initData: webApp?.initData,
     startParam: webApp?.initDataUnsafe?.start_param,
     userId: user?.id ? String(user.id) : undefined,

@@ -1,4 +1,3 @@
-import { isTelegramSurface } from './telegram';
 import type { WalletAdapter, WalletConnection, WalletInspectionState } from './types';
 
 export type { WalletAdapter, WalletConnection, WalletInspectionState, WalletProvider } from './types';
@@ -8,13 +7,8 @@ async function loadFreighterAdapter(): Promise<WalletAdapter> {
   return freighterAdapter;
 }
 
-async function loadWalletConnectAdapter(): Promise<WalletAdapter> {
-  const { walletConnectAdapter } = await import('./walletConnectAdapter');
-  return walletConnectAdapter;
-}
-
 export async function resolvePrimaryWalletAdapter(): Promise<WalletAdapter> {
-  return isTelegramSurface() ? loadWalletConnectAdapter() : loadFreighterAdapter();
+  return loadFreighterAdapter();
 }
 
 export async function inspectPrimaryWallet(): Promise<WalletInspectionState> {

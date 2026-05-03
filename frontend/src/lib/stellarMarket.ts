@@ -36,12 +36,9 @@ export async function signAndSubmitMarketPayment({
     throw new Error('Stellar pazar alici adresi ayarlanmamis.');
   }
 
-  const [stellarBase, horizonModule] = await Promise.all([
-    import('@stellar/stellar-base'),
-    import('../../node_modules/@stellar/stellar-sdk/lib/no-axios/horizon/index.js'),
-  ]);
-  const { Asset, BASE_FEE, Memo, Operation, TransactionBuilder } = stellarBase;
-  const Server = horizonModule.Server ?? horizonModule.default?.Server;
+  const stellarSdk = await import('@stellar/stellar-sdk');
+  const { Asset, BASE_FEE, Horizon, Memo, Operation, TransactionBuilder } = stellarSdk;
+  const Server = Horizon?.Server;
   if (!Server) {
     throw new Error('Stellar Horizon server modulu yuklenemedi.');
   }

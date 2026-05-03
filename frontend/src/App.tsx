@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUpDown,
   Check,
@@ -78,6 +78,7 @@ type MarketListing = {
 type CatDropResult = {
   nft: NftItem;
   chance: number;
+  forced?: boolean;
 };
 
 type OwnedInventory = Record<string, number>;
@@ -633,6 +634,16 @@ function rollCatDrop(baseChancePercent: number): CatDropResult | null {
   return null;
 }
 
+function forceCatDrop(): CatDropResult {
+  const candidates = nftCollection.filter((nft) => nft.rarity === 'Common');
+  const fallbackCandidates = candidates.length ? candidates : nftCollection;
+  return {
+    nft: fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)],
+    chance: 100,
+    forced: true,
+  };
+}
+
 function NftArtwork({
   nft,
   className = '',
@@ -701,6 +712,7 @@ function GameApp() {
   );
   const [listedNftNames, setListedNftNames] = useState<string[]>(() => seededMarketListings.map((listing) => listing.name));
   const [lastDrop, setLastDrop] = useState<CatDropResult | null>(null);
+  const [dropToast, setDropToast] = useState<CatDropResult | null>(null);
   const [tapCount, setTapCount] = useState(0);
   const [profileDisplayName, setProfileDisplayName] = useState('Emira Dreamer');
   const [selectedProfileCatNames, setSelectedProfileCatNames] = useState<string[]>(() => nftCollection.slice(0, 3).map((nft) => nft.name));
@@ -712,6 +724,7 @@ function GameApp() {
   const [currentPlayer, setCurrentPlayer] = useState<ProfileRecord | null>(null);
   const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
   const [marketListings, setMarketListings] = useState<MarketListing[]>(() => seededMarketListings);
+  const dropMissesRef = useRef(0);
   const [walletSupport, setWalletSupport] = useState<{ telegram: string[]; web: string[] } | null>(null);
   const [appConfig, setAppConfig] = useState<AppRuntimeConfig | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -888,13 +901,16 @@ function GameApp() {
     setTapCount((current) => current + 1);
     setBalance((current) => current + gain);
     setCombo((current) => (current >= comboCycleLength ? 1 : current + 1));
-    setLastDrop(null);
 
     if (walletState === 'connected' && wallet) {
-      const drop = rollCatDrop(nftDropChance);
+      const drop = dropMissesRef.current >= 49 ? forceCatDrop() : rollCatDrop(nftDropChance);
       if (drop) {
+        dropMissesRef.current = 0;
         setOwned((current) => addOwnedCat(current, drop.nft.name));
         setLastDrop(drop);
+        setDropToast(drop);
+      } else {
+        dropMissesRef.current += 1;
       }
     }
 
@@ -947,23 +963,40 @@ function GameApp() {
   const handleToggleListing = async (name: string, priceXlm?: number) => {
     const nft = nftCollection.find((item) => item.name === name);
     if (!nft || (owned[name] ?? 0) <= 0) return { ok: false };
+    if (!wallet) {
+      throw new Error('Ilan vermek icin Freighter cuzdanini bagla.');
+    }
 
     if (listedNftNames.includes(name)) {
-      const payload = await prepareMarketCancel(nft.tokenId);
+      const payload = await prepareMarketCancel(nft.tokenId).catch(() => ({ ok: true, offline: true }));
       setListedNftNames((current) => current.filter((item) => item !== name));
       setMarketListings((current) => current.filter((item) => item.tokenId !== nft.tokenId));
       return payload;
     }
 
-    const ownerAddress = wallet?.address ?? currentPlayer?.walletAddress ?? 'PENDING_OWNER';
+    const ownerAddress = wallet.address;
+    const listingPrice = Math.max(0.01, priceXlm ?? nft.price);
     const payload = await prepareMarketListing({
       tokenId: nft.tokenId,
       ownerAddress,
-      priceXlm: Math.max(0.01, priceXlm ?? nft.price),
+      priceXlm: listingPrice,
       name: nft.name,
       rarity: nft.rarity,
-      provider: wallet?.provider ?? 'freighter',
-    });
+      provider: wallet.provider,
+    }).catch(() => ({
+      ok: true,
+      offline: true,
+      listing: {
+        tokenId: nft.tokenId,
+        name: nft.name,
+        rarity: nft.rarity,
+        owner: ownerAddress,
+        priceXlm: listingPrice,
+        settlement: 'XLM',
+        network: wallet.network,
+        requiresFreighter: true,
+      } satisfies MarketListing,
+    }));
     setListedNftNames((current) => [...new Set([...current, name])]);
     if (payload?.listing) {
       setMarketListings((current) => {
@@ -979,12 +1012,14 @@ function GameApp() {
       throw new Error('XLM ile satin alma icin Stellar cuzdan baglantisi gerekli.');
     }
 
+    const listing = marketListings.find((item) => item.name === nft.name || item.tokenId === nft.tokenId);
+    const listingOwnerAddress = listing?.owner?.startsWith('G') ? listing.owner : undefined;
     const market = await import('./lib/stellarMarket');
     const receipt = await market.signAndSubmitMarketPayment({
       wallet,
       amountXlm: nft.price,
       memoText: `EMIRA-${nft.tokenId}`,
-      destinationAddress: market.resolveMarketplaceAddress(wallet),
+      destinationAddress: listingOwnerAddress ?? market.resolveMarketplaceAddress(wallet),
     });
 
     setOwned((current) => addOwnedCat(current, nft.name));
@@ -1010,15 +1045,8 @@ function GameApp() {
           : item;
       });
 
-    const ownedUnlisted = nftCollection
-      .filter((item) => visibleOwnedCount(owned, [...listedByName.keys()], item.name) > 0 && !listedByName.has(item.name))
-      .map((item) => ({
-        ...item,
-        owner: currentPlayer?.displayName ?? 'Sen',
-      }));
-
-    return [...listedItems, ...ownedUnlisted];
-  }, [currentPlayer?.displayName, marketListings, owned]);
+    return listedItems;
+  }, [marketListings]);
 
   const leaderboardPlayers = useMemo(
     () => {
@@ -1076,10 +1104,17 @@ function GameApp() {
     return 'Freighter kur';
   }, [telegramContext.isTelegram, walletSupport]);
 
+  useEffect(() => {
+    if (!dropToast) return;
+    const timeout = window.setTimeout(() => setDropToast(null), 4200);
+    return () => window.clearTimeout(timeout);
+  }, [dropToast]);
+
   return (
     <div className={`relative overflow-x-hidden bg-void text-text-primary ${isHomePage ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
       <GridBackground />
       <ScrollToTop />
+      <CatDropToast drop={dropToast} />
 
       <motion.nav
         initial={{ y: -100 }}
@@ -1291,6 +1326,34 @@ function GameApp() {
         </Routes>
       </main>
     </div>
+  );
+}
+
+function CatDropToast({ drop }: { drop: CatDropResult | null }) {
+  return (
+    <AnimatePresence>
+      {drop ? (
+        <motion.div
+          key={drop.nft.name}
+          initial={{ opacity: 0, x: 120, scale: 0.96 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 140, scale: 0.96 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+          className="fixed right-5 top-28 z-[70] flex w-[min(22rem,calc(100vw-2rem))] items-center gap-4 rounded-[1.35rem] border border-emerald-200 bg-white/96 p-4 text-emerald-900 shadow-2xl backdrop-blur"
+        >
+          <NftArtwork nft={drop.nft} className="h-20 w-20 shrink-0 rounded-2xl" imageClassName="p-2" />
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-600">
+              {drop.forced ? 'Garanti yakalama' : 'Kedi yakalandi'}
+            </p>
+            <p className={`${safeFontClass(drop.nft.name)} truncate text-2xl text-text-primary`}>{drop.nft.name}</p>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+              {drop.nft.rarity} / sans %{formatPercent(drop.chance)}
+            </p>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -1633,7 +1696,8 @@ function MarketPage({
               <button
                 className="inline-flex items-center gap-2 rounded-2xl border border-aurora-mid/20 bg-aurora-mid px-4 py-3 text-sm font-semibold text-white transition hover:bg-aurora-start disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
-                disabled={!listableItems.length}
+                disabled={!listableItems.length || walletState !== 'connected'}
+                title={walletState !== 'connected' ? 'Ilan vermek icin Freighter cuzdanini bagla.' : undefined}
                 onClick={() => setListingModalOpen(true)}
               >
                 <Gem size={16} />
