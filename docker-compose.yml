@@ -20,7 +20,7 @@ services:
       - ./backend:/app
     command: ["node", "src/server.mjs"]
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       PORT: 8080
       STELLAR_NETWORK: testnet
