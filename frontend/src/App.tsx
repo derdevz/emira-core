@@ -1236,10 +1236,15 @@ function GameApp() {
     const market = await import('./lib/stellarMarket');
     if (listedNftNames.includes(name)) {
       const chainReceipt = market.isMarketContractConfigured()
-        ? await market.signAndSubmitMarketContractAction({
-            wallet,
-            action: { type: 'cancel', tokenId: nft.tokenId },
-          })
+        ? await market
+            .signAndSubmitMarketContractAction({
+              wallet,
+              action: { type: 'cancel', tokenId: nft.tokenId },
+            })
+            .catch((error) => ({
+              skipped: true,
+              reason: error instanceof Error ? error.message : 'Soroban iptal islemi atlandi.',
+            }))
         : null;
       const payload = await prepareMarketCancel(nft.tokenId).catch(() => ({ ok: true, offline: true }));
       setListedNftNames((current) => current.filter((item) => item !== name));
@@ -1250,10 +1255,15 @@ function GameApp() {
     const ownerAddress = wallet.address;
     const listingPrice = Math.max(0.01, priceXlm ?? nft.price);
     const chainReceipt = market.isMarketContractConfigured()
-      ? await market.signAndSubmitMarketContractAction({
-          wallet,
-          action: { type: 'list', tokenId: nft.tokenId, priceXlm: listingPrice },
-        })
+      ? await market
+          .signAndSubmitMarketContractAction({
+            wallet,
+            action: { type: 'list', tokenId: nft.tokenId, priceXlm: listingPrice },
+          })
+          .catch((error) => ({
+            skipped: true,
+            reason: error instanceof Error ? error.message : 'Soroban listeleme islemi atlandi.',
+          }))
       : null;
     const payload = await prepareMarketListing({
       tokenId: nft.tokenId,
