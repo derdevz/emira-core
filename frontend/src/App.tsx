@@ -73,6 +73,12 @@ const nftRarityScale: { rarity: Rarity; power: string; tone: string }[] = [
   { rarity: 'Rare', power: '+8%', tone: 'from-fuchsia-200 via-pink-200 to-rose-300' },
   { rarity: 'Common', power: '+3%', tone: 'from-emerald-200 via-lime-200 to-teal-300' },
 ];
+const rarityRank: Record<Rarity, number> = {
+  Legendary: 0,
+  Epic: 1,
+  Rare: 2,
+  Common: 3,
+};
 
 const marketOwners = ['MOTTO45', 'neafguild', 'catkeeper', 'sorobanlabs', 'novaemira', 'collector_x'];
 const marketBackgrounds = ['Gunesli Doku', 'Mavi Sis', 'Pembe Aura', 'Cam Bahce'];
@@ -84,11 +90,10 @@ function buildNftSummary(name: string, rarity: string) {
   return `${name} Emira evreninde ${rarity.toLowerCase()} sinifinda yer alan ozel bir koleksiyon parcasi.`;
 }
 
-function stellarAccessCopy(name: string) {
-  return `${name} sadece Stellar aginda XLM ile edinilebilen ozel bir koleksiyon parcasi.`;
-}
-
 function buildNftStory(name: string, rarity: string, index: number) {
+  const story = nftStories[name];
+  if (story) return story;
+
   const origins = [
     'Sisli ova sabahlarinda bulunan ilk izlerden biri olarak kayda gecti.',
     'Eski oyuncularin sezon sonu kasalarindan cikan nadir serilerden biri sayiliyor.',
@@ -106,14 +111,26 @@ function buildNftStory(name: string, rarity: string, index: number) {
   return `${name}, ${origins[index % origins.length]} ${rarity} kategorisindeki bu parca ${moods[index % moods.length]}`;
 }
 
+function stripTurkish(value: string) {
+  return value
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[ıİI]/g, 'i')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[üÜ]/g, 'u')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function toTitleCase(rawName: string) {
-  return rawName
+  return stripTurkish(rawName)
     .normalize('NFC')
     .split(/\s+/)
     .filter(Boolean)
     .map((word) => {
       const [first = '', ...rest] = [...word];
-      return `${first.toLocaleUpperCase('tr-TR')}${rest.join('').toLocaleLowerCase('tr-TR')}`;
+      return `${first.toLocaleUpperCase('en-US')}${rest.join('').toLocaleLowerCase('en-US')}`;
     })
     .join(' ');
 }
@@ -123,19 +140,22 @@ function baseNameFromPath(path: string) {
 }
 
 const nftNameOverrides: Record<string, string> = {
-  'acık kahve kedi': 'Açık Kahve Kedi',
-  'ates kedisi': 'Ateş Kedisi',
-  'balıkcı kedi': 'Balıkçı Kedi',
-  'bogazicili kedi': 'Boğaziçili Kedi',
-  'tatlı sşyah kedi': 'Tatlı Siyah Kedi',
+  'acik kahve kedi': 'Acik Kahve Kedi',
+  'ates kedisi': 'Ates Kedisi',
+  'balikci kedi': 'Balikci Kedi',
+  'bogazicili kedi': 'Bogazicili Kedi',
+  'tatli ssyah kedi': 'Tatli Siyah Kedi',
+  'ilgi cekici kedi': 'Ilgi Cekici Kedi',
   'kahve benekli kedi2': 'Kahve Benekli Kedi 2',
+  'ben10 kedi': 'Ben 10 Kedi',
+  'winrar kedi': 'WinRar Kedi',
   'linux cat': 'Linux Cat',
   'reverse cart kedi': 'Reverse Cart Kedi',
 };
 
 function normalizeNftName(fileName: string) {
   const rawName = fileName.replace(/\.[^.]+$/, '');
-  const normalizedKey = rawName.normalize('NFC').toLocaleLowerCase('tr-TR');
+  const normalizedKey = stripTurkish(rawName).normalize('NFC').toLocaleLowerCase('en-US');
   return nftNameOverrides[normalizedKey] ?? toTitleCase(rawName);
 }
 
@@ -154,61 +174,171 @@ function initialsFromName(name: string) {
 }
 
 function safeFontClass(value: string) {
-  return /[çğıöşüÇĞİÖŞÜ]/.test(value) ? 'font-soft-safe' : 'font-nft';
+  void value;
+  return 'font-nft';
 }
 
 const rarityByName: Partial<Record<string, Rarity>> = {
-  'Balıkçı Kedi': 'Legendary',
-  'Ben10 Kedi': 'Legendary',
+  'Balikci Kedi': 'Legendary',
+  'Ben 10 Kedi': 'Legendary',
   Caska: 'Legendary',
   Guts: 'Legendary',
-  'Winrar Kedi': 'Legendary',
+  'WinRar Kedi': 'Legendary',
   'Minecraft Kedisi': 'Legendary',
-  'Ateş Kedisi': 'Epic',
-  'Boşluk Kedisi': 'Epic',
-  'Boğaziçili Kedi': 'Epic',
+  'Ates Kedisi': 'Epic',
+  'Bosluk Kedisi': 'Epic',
+  'Bogazicili Kedi': 'Epic',
   'Bonibon Kedi': 'Epic',
+  'Coin Kedisi': 'Epic',
   'Buz Kedi': 'Epic',
   'Elmas Kedi': 'Epic',
   'Coder Kedi': 'Epic',
   'Habibi Kedi': 'Epic',
-  'Havalı Kedi': 'Epic',
+  'Havali Kedi': 'Epic',
   'Hipnoz Kedi': 'Epic',
-  'Kabarcıklı Kedi': 'Epic',
+  'Kabarcikli Kedi': 'Epic',
   'Kral Kedi': 'Epic',
   'Linux Cat': 'Epic',
   'Marshmallow Kedi': 'Epic',
   'Reverse Cart Kedi': 'Epic',
   'Steve Kedisi': 'Epic',
-  'Sünger Kedi': 'Epic',
-  'Tuğla Kedi': 'Epic',
+  'Sunger Kedi': 'Epic',
+  'Tugla Kedi': 'Epic',
+  'Acik Kahve Kedi': 'Rare',
+  'Gri Kedi': 'Rare',
+  'Ilgi Cekici Kedi': 'Rare',
+  'Kahve Benekli Kedi': 'Rare',
+  'Mavi Kedi': 'Rare',
+  'Sari Benekli Kedi': 'Rare',
+  'Sari Kedi': 'Rare',
+  'Siyah Kedi': 'Rare',
+  'Sokak Kedisi': 'Rare',
+  'Tatli Kedi': 'Rare',
+  'Tatli Siyah Kedi': 'Rare',
   'Tilkimsi Kedi': 'Rare',
-  'Tılsımlı Kedi': 'Rare',
-  'Şeker Kedi': 'Rare',
-  'Siyahımsı Kedi': 'Rare',
+  'Tilsimli Kedi': 'Rare',
+  'Seker Kedi': 'Rare',
+  'Siyahimsi Kedi': 'Rare',
   Tekir: 'Rare',
   'Siyah Beyaz Kedi': 'Rare',
+  'Beyaz Kedi': 'Rare',
   'Kurdeleli Kedi': 'Rare',
   'Kahve Benekli Kedi 2': 'Rare',
   'Kahve Kedi': 'Rare',
   'Gri Benekli Kedi': 'Rare',
+  'Kozmik Kedi': 'Rare',
 };
 
 const nftImageScaleByName: Partial<Record<string, number>> = {
-  'Balıkçı Kedi': 0.9,
-  'Ben10 Kedi': 0.92,
+  'Balikci Kedi': 0.9,
+  'Ben 10 Kedi': 0.92,
   Caska: 0.9,
   Guts: 0.9,
-  'Winrar Kedi': 0.95,
+  'WinRar Kedi': 0.95,
   'Minecraft Kedisi': 0.93,
-  'Boğaziçili Kedi': 0.86,
+  'Bogazicili Kedi': 0.86,
   'Bonibon Kedi': 0.9,
   'Buz Kedi': 0.88,
   'Coin Kedisi': 0.9,
   'Linux Cat': 0.92,
   'Reverse Cart Kedi': 0.92,
-  'Sünger Kedi': 0.92,
-  'İlgi Çekici Kedi': 0.94,
+  'Sunger Kedi': 0.92,
+  'Ilgi Cekici Kedi': 0.94,
+};
+
+const nftStories: Record<string, string> = {
+  'Acik Kahve Kedi':
+    'Acik Kahve Kedi, gunesli koy yollarinda dolasmayi seven sakin bir kedidir. Her tiklamada sahibine sabir ve bereket getirdigine inanilir. Sessiz gorunur ama sansli kasalarin kokusunu uzaktan alir.',
+  'Gri Benekli Kedi':
+    'Gri Benekli Kedi, sokaklarin en merakli gezginlerinden biridir. Uzerindeki beneklerin her biri, acilmis eski bir kasanin hatirasidir. Sahibini nadir odullere goturen kucuk ipuclarini hep o fark eder.',
+  'Gri Kedi':
+    'Gri Kedi, kalabaligin icinde kaybolmayi seven gizemli bir kedidir. Sessizce izler, dogru zamani bekler ve en kritik anda ortaya cikar. Liderlik tablosunda yukselmek isteyenlerin ugurlu dostudur.',
+  'Ilgi Cekici Kedi':
+    'Ilgi Cekici Kedi girdigi her profilde hemen fark edilir. Tatli bakislariyla rakiplerin dikkatini dagitir, sahibine ise ekstra motivasyon verir. Onu gorenler genelde "bu kedi normal degil" der.',
+  'Kahve Benekli Kedi':
+    'Kahve Benekli Kedi, eski haritalarin ve gizli sandiklarin pesinde gezen bir maceracidir. Benekleri ona kamuflaj saglar, bu yuzden kasalara herkesten once ulasir. En sevdigi sey, sahibinin envanterini surprizlerle doldurmaktir.',
+  'Kahve Benekli Kedi 2':
+    'Kahve Benekli Kedi 2, ilkinden daha sessiz ama daha stratejiktir. Her hamlesini hesaplar, sonra bir anda ortaya cikip odulu kapar. Ozellikle sabirli oyuncularla guclu bag kurar.',
+  'Kahve Kedi':
+    'Kahve Kedi, sicak kahve kokusunu ve uzun oyun seanslarini sever. Gece boyunca sahibinin yaninda bekler ve tiklama gucunu hic dusurmez. Sadakatiyle bilinen klasik ama degerli bir NFT kedisidir.',
+  'Kurdeleli Kedi':
+    'Kurdeleli Kedi, profil vitrinlerinin yildizi olmak icin dogmustur. Zarif gorunusunun arkasinda oldukca rekabetci bir ruh tasir. Liderlik tablosunda yukselen sahipleriyle gurur duyar.',
+  'Mavi Kedi':
+    'Mavi Kedi, ay isiginda parlayan nadir turlerden biridir. Renginin, eski bir Stellar gecidinden gectigi gun degistigi soylenir. Onu profiline koyan oyuncular, herkesten farkli gorunmeyi sever.',
+  'Sari Benekli Kedi':
+    'Sari Benekli Kedi, neseli enerjisiyle etrafindaki herkesi hizlandirir. Benekleri, actigi kasalardan cikan altin tozlariyla olusmustur. Sans ve eglenceyi ayni anda seven oyuncularin kedisidir.',
+  'Sari Kedi':
+    'Sari Kedi, gunesin temsilcisi gibi parlak ve pozitiftir. Tiklama serileri uzadikca daha da enerjik hale gelir. Oyuncular arasinda "moral kedisi" olarak taninir.',
+  'Siyah Beyaz Kedi':
+    'Siyah Beyaz Kedi, gece ve gunduz dengesini tasiyan asil bir kedidir. Ne tamamen sessizdir ne de fazla hareketli; tam dogru anda hamle yapar. Dengeli oyuncularin profilinde cok iyi durur.',
+  'Siyah Kedi':
+    'Siyah Kedi, kasalarin golgesinde yasayan gizemli bir figurdur. Bazilari onun ugursuz oldugunu soyler ama sahipleri tam tersini bilir. En beklenmedik anda nadir odul getirmesiyle unludur.',
+  'Siyahimsi Kedi':
+    'Siyahimsi Kedi, karanlikta kaybolup sadece gozleriyle kendini belli eder. Tamamen siyah degildir; uzerinde gecmis savaslardan kalan hafif izler tasir. Sessiz ama guclu karakterli oyunculara yakisir.',
+  'Sokak Kedisi':
+    'Sokak Kedisi, hicbir kasaya bedava guvenmeyen tecrubeli bir hayatta kalandir. Sehrin arka sokaklarinda tiklama ekonomisinin kurallarini ogrenmistir. Azla yetinir ama dogru sahibin elinde cok degerlenir.',
+  'Seker Kedi':
+    'Seker Kedi, tatli gorunusuyle herkesin kalbini calar. Ancak sevimliliginin arkasinda kasa acarken inanilmaz bir sans saklidir. Profilinde yumusak ve temiz bir hava isteyenler icin idealdir.',
+  'Tatli Kedi':
+    'Tatli Kedi, oyuncularin envanterinde huzur veren bir dosttur. Buyuk hedefleri yokmus gibi gorunur ama sahibini her gun oyuna dondurmeyi basarir. Basit, sevimli ve vazgecilmezdir.',
+  'Tatli Siyah Kedi':
+    'Tatli Siyah Kedi, karanlik gorunusune ragmen oldukca yumusak huyludur. Geceleri profil ekraninda sessizce bekler ve sahibinin basarilarini izler. Karanlik tema seven oyuncularin favorisidir.',
+  Tekir:
+    'Tekir, klasik sokak zekasini tasiyan cesur bir kedidir. Her ortamda hayatta kalir, her kasadan bir sey cikarma umudunu asla kaybetmez. Siradan gorunur ama en guvenilir dostlardan biridir.',
+  'Tilkimsi Kedi':
+    'Tilkimsi Kedi, kedi mi tilki mi oldugu hala tartisilan kurnaz bir NFTdir. Hizli dusunur, hizli hareket eder ve firsatlari kacirmaz. Pazar yerinde degerini bilen oyuncular tarafindan aranir.',
+  'Tilsimli Kedi':
+    'Tilsimli Kedinin boynundaki isaretin eski bir sans buyusu tasidigi soylenir. Kasalar acilirken sessizce parlar ve sahibine umut verir. Nadirlik pesinde kosan oyuncular icin ozel bir semboldur.',
+  'Ates Kedisi':
+    'Ates Kedisi, lavlarin icinden dogmus gibi gorunen enerjik bir kedidir. Her tiklamada icindeki alev biraz daha buyur. Sabirsiz, hizli ve agresif oynayan oyuncularin ruhunu temsil eder.',
+  'Bogazicili Kedi':
+    'Bogazicili Kedi, universite ogrencilerine ders anlatan bilge bir internet hocasindan ilham almistir. Zor konulari bile sakin sakin aciklar, sonra gidip bir kasa acar. Onun profilde olmasi "bu oyuncu hem calisir hem kazanir" mesaji verir.',
+  'Bonibon Kedi':
+    'Bonibon Kedi, rengarenk seker parcalariyla kapli neseli bir kedidir. Nereden gectiyse orada renkli izler birakir. Kasa acarken en sevdigi sey, siradan odulleri bile eglenceli gostermektir.',
+  'Coder Kedi':
+    'Coder Kedi, geceleri terminal isiginda yasayan dijital bir kedidir. Tuylerinin uzerinde akan yesil kodlar, onun blockchain aglariyla konusabildigini gosterir. Hatalari sessizce bulur, deploy aninda sahibinin yaninda durur.',
+  'Coin Kedisi':
+    'Coin Kedisi, altin pariltilari arasinda buyumus zengin ruhlu bir kedidir. Her tiklamanin bir gun buyuk kazanca donusecegine inanir. Marketplacete gosterisli durmayi seven oyuncular icin birebirdir.',
+  'Elmas Kedi':
+    'Elmas Kedi, buz gibi parlakligiyla nadirligin semboludur. Isigi farkli acilardan kirilir ve profil ekraninda hemen dikkat ceker. Onu elde eden oyuncular genelde kolay kolay satmak istemez.',
+  Guts:
+    'Guts, karanlik savaslardan gecmis yalniz ve sert bir kedidir. Buyuk kilici ve yipranmis gorunusu, onun asla pes etmeyen ruhunu anlatir. Zorlu grind yapan ve liderlik tablosunda savasan oyunculara yakisir.',
+  'Habibi Kedi':
+    'Habibi Kedi, col ruzgarlariyla gezen sicak kanli bir kedidir. Tarzi, durusu ve sakinligiyle her ortamda dikkat ceker. Sahibini sadece sansla degil, karizmayla da one cikarir.',
+  'Havali Kedi':
+    'Havali Kedi, gozlugunu takip hicbir seyi fazla ciddiye almadan yurur. Ama rahat tavrinin altinda iyi hesap yapan bir oyuncu ruhu vardir. Profilde "ben buradayim ve rahatim" demenin en iyi yoludur.',
+  'Kral Kedi':
+    'Kral Kedi, tiklama kralliginin altin tahtina goz diken asil bir kedidir. Taci sadece sus degildir; her zaferin ve her acilan kasanin semboludur. Liderlik tablosunun ust siralarinda gorunmek icin yaratilmistir.',
+  'Linux Cat':
+    'Linux Cat, acik kaynak dunyasinin sessiz kahramanidir. Penguen dostlariyla birlikte sistemleri ayakta tutar ve hatalari sabirla duzeltir. Docker, terminal ve gece mesaisi seven oyuncularin kedisidir.',
+  'Minecraft Kedisi':
+    'Minecraft Kedisi, bloklu dunyalardan cikip Stellar evrenine gelmistir. En sevdigi sey kaynak toplamak, gizli sandik bulmak ve kendi kucuk ussunu kurmaktir. Sabirli grind yapan oyuncularla cok iyi anlasir.',
+  'Reverse Cart Kedi':
+    'Reverse Cart Kedi, kurallari tersine cevirmeyi seven asi bir kedidir. Herkes ileri giderken o geri hamle yapar ve beklenmedik odulu kapar. Risk almayi seven oyuncular icin ozel bir koleksiyon parcasidir.',
+  'Steve Kedisi':
+    'Steve Kedisi, elindeki kilicla piksel evrenlerinden gelen cesur bir savascidir. Gorunusu sade olabilir ama macera ruhu cok buyuktur. Kasa acmayi madencilik gibi gorur: ne cikacagi asla belli olmaz.',
+  'WinRar Kedi':
+    'WinRar Kedi, yillardir "deneme surumu" ruhuyla yasamaya devam eden efsanevi bir kedidir. Sirtindaki arsiv renkleri, onun sikistirilmis hazineleri korudugunu gosterir. Envanteri duzenli tutmayi seven oyuncularin dostudur.',
+  'Balikci Kedi':
+    'Balikci Kedi, sakin gollerin kenarinda sabirla bekleyen bir avcidir. Her tiklamayi oltaya atilmis kucuk bir yem gibi gorur. Bazen en buyuk odulu yakalamak icin sadece beklemek gerektigini bilir.',
+  'Ben 10 Kedi':
+    'Ben 10 Kedi, uzayli enerjisiyle dolu yesil bir kahramandir. Farkli formlara donusemese de farkli oyun tarzlarina hemen uyum saglar. Genc, hizli ve enerjik oyuncularin favorisidir.',
+  'Bosluk Kedisi':
+    'Bosluk Kedisi, evrenin karanlik tarafinda kaybolmus gizemli bir varliktir. Vucudu isigi yutar, sadece dikkatli bakanlar onun gercek seklini gorebilir. En nadir kasalardan cikmis gibi duran soguk bir auraya sahiptir.',
+  'Buz Kedi':
+    'Buz Kedi, donmus yildizlardan dusen kristal tuylerle kaplidir. Ne kadar rekabet kizisirsa kizissin, o hep sogukkanli kalir. Stratejik oynayan ve acele etmeyen oyunculara yakisir.',
+  'Hipnoz Kedi':
+    'Hipnoz Kedinin tuylerinde donen desenlere uzun sure bakmak tehlikelidir. Rakiplerin dikkatini dagitir, sahibine ise odaklanma gucu verir. Pazar yerinde en gizemli kedilerden biri olarak bilinir.',
+  'Kabarcikli Kedi':
+    'Kabarcikli Kedi, kopukler ve baloncuklar arasinda dogmus neseli bir kedidir. Uzerindeki kabarciklar her tiklamada hafifce parlar. Eglenceli, temiz ve ferah profil tasarimlarina cok yakisir.',
+  'Kozmik Kedi':
+    'Kozmik Kedi, yildiz tozlari ve galaksi isiklariyla kapli efsanevi bir NFTdir. Geceleri profil ekraninda kucuk bir evren gibi parlar. Buyuk hedefleri olan oyuncular icin uzayin sessiz destegidir.',
+  'Marshmallow Kedi':
+    'Marshmallow Kedi, yumusak renkleri ve tatli gorunusuyle adeta seker dunyasindan gelmistir. Kirilgan gorunur ama sahibine moral verme konusunda cok gucludur. Sevimlilik ve nadirlik arasinda guzel bir denge kurar.',
+  'Sunger Kedi':
+    'Sunger Kedi, deniz altindan gelen turuncu ve delikli yapisiyla eglenceli bir karakterdir. Suyu, sansi ve komik anlari uzerine ceker. Oyunu fazla ciddiye almadan keyif almak isteyenlerin kedisidir.',
+  'Tugla Kedi':
+    'Tugla Kedi, saglamligi ve dayanikliligiyla bilinir. Duvar gibi durur, kolay kolay pes etmez ve uzun vadeli oyunculara eslik eder. Yavas ama emin adimlarla yukselenlerin semboludur.',
 };
 
 const rarityMeta = Object.fromEntries(nftRarityScale.map((item) => [item.rarity, item])) as Record<Rarity, { rarity: Rarity; power: string; tone: string }>;
@@ -237,7 +367,8 @@ const nftCollection = Object.entries(nftAssets)
       imageScale: nftImageScaleByName[name] ?? 0.92,
       ...metadata,
     };
-  });
+  })
+  .sort((left, right) => rarityRank[left.rarity] - rarityRank[right.rarity] || left.name.localeCompare(right.name, 'tr'));
 
 type NftItem = (typeof nftCollection)[number];
 
@@ -337,7 +468,7 @@ type LeaderboardMode = 'taps' | 'balance' | 'owned';
 const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
 const formatPercent = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
 const modalRoot = typeof document !== 'undefined' ? document.body : null;
-const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + Math.log2(level + 1) * 0.92));
+const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + Math.log2(level + 1) * 1.25 + level * 0.18));
 
 function NftArtwork({
   nft,
@@ -736,7 +867,7 @@ function HomePage({
   }, [resize, selectedTree?.id]);
 
   return (
-    <div className="mx-auto grid h-full max-w-7xl items-center gap-4 lg:grid-cols-[1fr_392px] lg:overflow-hidden">
+    <div className="mx-auto grid h-full max-w-7xl items-center gap-4 lg:grid-cols-[1fr_410px] lg:overflow-hidden">
       <div className="relative grid h-full place-items-center lg:justify-items-start lg:pl-18 xl:pl-24">
         <button
           className="absolute left-0 top-4 inline-flex h-12 w-12 items-center justify-center rounded-full border border-surface bg-white/92 text-text-secondary shadow-sm transition hover:border-aurora-mid hover:text-aurora-start"
@@ -784,23 +915,23 @@ function HomePage({
       <motion.aside
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
-        className="rounded-[1.6rem] border border-surface bg-white/92 p-5 shadow-lg backdrop-blur lg:-translate-y-2"
+        className="rounded-[1.6rem] border border-surface bg-white/92 p-4 shadow-lg backdrop-blur"
       >
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Yukseltmeler</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
           <HomeStat label="Tap gucu" value={`+${tapPower}`} />
           <HomeStat label="Pasif/saat" value={formatNumber(passiveIncome)} />
           <HomeStat label="NFT sansi" value={`%${formatPercent(nftDropChance)}`} />
           <HomeStat label="Bakiye" value={`${formatNumber(balance)} NEAF`} />
         </div>
-        <div className="mt-4 space-y-3.5">
+        <div className="mt-3 space-y-2.5">
           {upgrades.map(({ id, name, description, price, boost, bonus, kind, icon: Icon }) => {
             const level = upgradeLevels[id];
             const currentPrice = calculateUpgradePrice(price, level);
             return (
               <button
                 key={name}
-                className={`w-full rounded-2xl border p-3.5 text-left transition ${
+                className={`w-full rounded-2xl border p-3 text-left transition ${
                   balance < currentPrice || walletState === 'checking' || walletState === 'connecting'
                     ? 'border-surface bg-deep/60 text-text-muted'
                     : 'border-surface bg-white hover:-translate-y-0.5 hover:border-aurora-mid'
@@ -810,16 +941,16 @@ function HomePage({
                 onClick={() => onBuyUpgrade(id, currentPrice, boost, kind)}
               >
                 <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-deep p-3 text-aurora-start">
-                    <Icon size={20} />
+                  <div className="rounded-xl bg-deep p-2.5 text-aurora-start">
+                    <Icon size={18} />
                   </div>
                   <div>
                     <p className="font-display text-base font-bold">{name}</p>
-                    <p className="text-xs leading-5 text-text-secondary">{description}</p>
-                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">Seviye {level}</p>
+                    <p className="text-xs leading-4 text-text-secondary">{description}</p>
+                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Seviye {level}</p>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between font-mono text-xs uppercase tracking-[0.14em]">
+                <div className="mt-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.14em]">
                   <span>{formatNumber(currentPrice)} NEAF</span>
                   <span className="text-aurora-start">{bonus}</span>
                 </div>
@@ -1073,7 +1204,6 @@ function MuseumDetailModal({
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</span>
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary">Stellar koleksiyonu</span>
             </div>
-            <p className="mt-5 text-base leading-7 text-text-secondary">{stellarAccessCopy(nft.name)}</p>
             <div className="mt-6 rounded-[1.4rem] border border-surface bg-deep/70 p-5">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Hikayesi</p>
               <p className="mt-3 text-sm leading-7 text-text-secondary">{nft.story}</p>
@@ -1131,7 +1261,6 @@ function MarketDetailModal({
             <h3 className={`mt-4 ${safeFontClass(nft.name)} text-4xl text-text-primary md:text-5xl`}>{nft.name}</h3>
             <p className="mt-3 font-display text-3xl font-extrabold text-text-primary">{formatNumber(nft.price)} XLM</p>
             <p className="mt-2 text-sm text-text-secondary">Sahip {nft.owner} · Token #{nft.tokenId}</p>
-            <p className="mt-6 text-base leading-7 text-text-secondary">{stellarAccessCopy(nft.name)}</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-[1.25rem] border border-surface bg-deep/70 p-4">
                 <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-muted">Koleksiyon</p>
@@ -1591,9 +1720,9 @@ function walletButtonLabel(state: WalletUiState, wallet: WalletConnection | null
 
 function HomeStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-surface bg-deep px-4 py-3">
-      <p className="font-display text-lg font-extrabold text-text-primary">{value}</p>
-      <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">{label}</p>
+    <div className="rounded-2xl border border-surface bg-deep px-3 py-2.5">
+      <p className="font-display text-base font-extrabold text-text-primary">{value}</p>
+      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">{label}</p>
     </div>
   );
 }
