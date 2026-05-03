@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: npm install --include=optional
 
+      - name: Install Rollup Linux native package
+        run: npm install @rollup/rollup-linux-x64-gnu --no-save
+
       - name: Build
         env:
           VITE_USE_HASH_ROUTER: "true"
