@@ -38,8 +38,9 @@
 
   --font-family-display: 'EmiraDisplay', system-ui, sans-serif;
   --font-family-mono: 'IBM Plex Mono', monospace;
-  --font-family-nft: 'EmiraNft', 'EmiraDisplay', system-ui, sans-serif;
-  --font-family-soft: 'EmiraSoft', 'EmiraDisplay', system-ui, sans-serif;
+  --font-family-nft: 'EmiraNft', 'EmiraSoft', 'IBM Plex Mono', 'Segoe UI', sans-serif;
+  --font-family-soft: 'EmiraSoft', 'IBM Plex Mono', 'Segoe UI', sans-serif;
+  --font-family-soft-safe: 'IBM Plex Mono', 'Segoe UI', 'Trebuchet MS', sans-serif;
 
   --animate-glow: glow 2s ease-in-out infinite alternate;
 }
@@ -96,6 +97,10 @@ button {
 
 .font-soft {
   font-family: var(--font-family-soft);
+}
+
+.font-soft-safe {
+  font-family: var(--font-family-soft-safe);
 }
 
 .text-glow {

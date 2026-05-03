@@ -29,6 +29,16 @@ type WalletUiState = 'checking' | 'missing' | 'ready' | 'connecting' | 'connecte
 type Rarity = 'Legendary' | 'Epic' | 'Rare' | 'Common';
 type UpgradeKind = 'tap' | 'passive' | 'luck';
 type PickerOption = { id: string; name: string; image: string; price?: number };
+type LeaderboardPlayer = {
+  name: string;
+  badge: string;
+  taps: number;
+  balance: number;
+  ownedCount: number;
+  isSelf: boolean;
+  avatar?: string | null;
+  accent: string;
+};
 
 const freighterInstallUrl = 'https://www.freighter.app/';
 
@@ -70,6 +80,10 @@ const comboCycleLength = 25;
 
 function buildNftSummary(name: string, rarity: string) {
   return `${name} Emira evreninde ${rarity.toLowerCase()} sinifinda yer alan ozel bir koleksiyon parcasi.`;
+}
+
+function stellarAccessCopy(name: string) {
+  return `${name} sadece Stellar aginda XLM ile edinilebilen ozel bir koleksiyon parcasi.`;
 }
 
 function buildNftStory(name: string, rarity: string, index: number) {
@@ -125,6 +139,20 @@ function normalizeNftName(fileName: string) {
 
 function formatAssetName(path: string) {
   return toTitleCase(baseNameFromPath(path));
+}
+
+function initialsFromName(name: string) {
+  return name
+    .replace('@', '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase('tr-TR') ?? '')
+    .join('');
+}
+
+function safeFontClass(value: string) {
+  return /[çğıöşüÇĞİÖŞÜ]/.test(value) ? 'font-soft-safe' : 'font-nft';
 }
 
 const rarityByName: Partial<Record<string, Rarity>> = {
@@ -219,7 +247,17 @@ const homeTreeOptions = Object.entries(homeTreeAssets)
   .sort(([left], [right]) => left.localeCompare(right, 'tr'))
   .map(([path, image]) => ({
     id: baseNameFromPath(path),
-    name: formatAssetName(path),
+    name:
+      (
+        {
+          agac1: 'Yumusak Tepe',
+          agac2: 'Esinti Dali',
+          akasya: 'Akasya Golgesi',
+          'cicekli agac2': 'Bahar Buketi',
+          'güllü agac': 'Gul Tacı',
+          'kuru agac': 'Eski Koru',
+        } as Record<string, string>
+      )[baseNameFromPath(path)] ?? formatAssetName(path),
     image,
     price:
       ({
@@ -233,12 +271,29 @@ const homeTreeOptions = Object.entries(homeTreeAssets)
   }));
 
 const profileBackgroundOptions = Object.entries(profileBackgroundAssets)
-  .filter(([path]) => !path.endsWith('.DS_Store'))
+  .filter(([path]) => !path.endsWith('.DS_Store') && !path.includes('/ev3.'))
   .sort(([left], [right]) => left.localeCompare(right, 'tr'))
-  .map(([path, image], index) => ({
+  .map(([path, image]) => ({
     id: baseNameFromPath(path),
-    name: `Profil Arka Plan ${index + 1}`,
+    name:
+      (
+        {
+          ev1: 'Pencere Isigi',
+          ev2: 'Sakin Oda',
+          ev4: 'Perde Izi',
+          ev5: 'Aksam Bahcesi',
+        } as Record<string, string>
+      )[baseNameFromPath(path)] ?? `Profil Arka Plan`,
     image,
+    price:
+      (
+        {
+          ev1: 0,
+          ev2: 2600,
+          ev4: 5400,
+          ev5: 9200,
+        } as Record<string, number>
+      )[baseNameFromPath(path)] ?? 3800,
   }));
 
 const upgrades = [
@@ -327,6 +382,9 @@ function GameApp() {
   const [selectedTreeId, setSelectedTreeId] = useState(() => homeTreeOptions[0]?.id ?? '');
   const [ownedTreeIds, setOwnedTreeIds] = useState<string[]>(() => (homeTreeOptions[0] ? [homeTreeOptions[0].id] : []));
   const [selectedProfileBackgroundId, setSelectedProfileBackgroundId] = useState(() => profileBackgroundOptions[0]?.id ?? '');
+  const [ownedProfileBackgroundIds, setOwnedProfileBackgroundIds] = useState<string[]>(() =>
+    profileBackgroundOptions[0] ? [profileBackgroundOptions[0].id] : [],
+  );
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>({
     'tap-boost': 0,
@@ -419,6 +477,12 @@ function GameApp() {
     setOwnedTreeIds((current) => [...current, id]);
   };
 
+  const buyProfileBackground = (id: string, price: number) => {
+    if (ownedProfileBackgroundIds.includes(id) || balance < price) return;
+    setBalance((current) => current - price);
+    setOwnedProfileBackgroundIds((current) => [...current, id]);
+  };
+
   const handleToggleListing = (name: string) => {
     const nft = nftCollection.find((item) => item.name === name);
     if (!nft || !owned.includes(name)) return;
@@ -427,13 +491,13 @@ function GameApp() {
 
   const leaderboardPlayers = useMemo(
     () => [
-      { name: 'Emira Dreamer', badge: 'Yumusak Isik', taps: tapPower, balance, ownedCount: owned.length, isSelf: true },
-      { name: 'Cloud Paws', badge: 'Sabah Yildizi', taps: 164, balance: 884200, ownedCount: 12, isSelf: false },
-      { name: 'Mint Whisker', badge: 'Ay Cizgisi', taps: 138, balance: 761040, ownedCount: 9, isSelf: false },
-      { name: 'Soroban Bloom', badge: 'Altin Esinti', taps: 121, balance: 640800, ownedCount: 7, isSelf: false },
-      { name: 'Nova Nest', badge: 'Gun Batimi', taps: 88, balance: 118030, ownedCount: 4, isSelf: false },
+      { name: 'Emira Dreamer', badge: 'Yumusak Isik', taps: tapPower, balance, ownedCount: owned.length, isSelf: true, avatar: profileAvatar, accent: 'from-sky-200 to-cyan-300' },
+      { name: 'Cloud Paws', badge: 'Sabah Yildizi', taps: 164, balance: 884200, ownedCount: 12, isSelf: false, accent: 'from-violet-200 to-fuchsia-300' },
+      { name: 'Mint Whisker', badge: 'Ay Cizgisi', taps: 138, balance: 761040, ownedCount: 9, isSelf: false, accent: 'from-emerald-200 to-lime-300' },
+      { name: 'Soroban Bloom', badge: 'Altin Esinti', taps: 121, balance: 640800, ownedCount: 7, isSelf: false, accent: 'from-amber-200 to-orange-300' },
+      { name: 'Nova Nest', badge: 'Gun Batimi', taps: 88, balance: 118030, ownedCount: 4, isSelf: false, accent: 'from-rose-200 to-pink-300' },
     ],
-    [balance, owned.length, tapPower],
+    [balance, owned.length, profileAvatar, tapPower],
   );
 
   return (
@@ -581,7 +645,10 @@ function GameApp() {
               <ProfilePage
                 selectedBackground={profileBackgroundOptions.find((item) => item.id === selectedProfileBackgroundId) ?? profileBackgroundOptions[0]}
                 backgroundOptions={profileBackgroundOptions}
+                balance={balance}
+                ownedBackgroundIds={ownedProfileBackgroundIds}
                 onSelectBackground={setSelectedProfileBackgroundId}
+                onBuyBackground={buyProfileBackground}
                 profileAvatar={profileAvatar}
                 onAvatarChange={setProfileAvatar}
                 wallet={wallet}
@@ -758,7 +825,7 @@ function MuseumPage() {
             >
               <NftArtwork nft={nft} className="aspect-square rounded-[1.25rem]" imageClassName="p-4 group-hover:scale-[1.03]" />
               <div className="mt-5 flex items-center justify-between gap-3">
-                <h3 className="font-nft text-2xl text-text-primary">{nft.name}</h3>
+                <h3 className={`${safeFontClass(nft.name)} text-2xl text-text-primary`}>{nft.name}</h3>
                 <span className="rounded-full border border-surface bg-deep px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
                   {nft.rarity}
                 </span>
@@ -889,10 +956,10 @@ function MarketPage({
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-nft text-2xl text-text-primary">{nft.name}</p>
+                      <p className={`${safeFontClass(nft.name)} text-2xl text-text-primary`}>{nft.name}</p>
                       <p className="mt-1 text-sm text-text-muted">#{nft.tokenId}</p>
                     </div>
-                    <span className="rounded-full border border-surface bg-deep px-3 py-1 text-xs text-text-secondary">{nft.power}</span>
+                    <span className="rounded-full border border-surface bg-deep px-3 py-1 text-xs text-text-secondary">{nft.rarity}</span>
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-3 text-sm">
                     <span className="text-text-secondary">Sahip {nft.owner}</span>
@@ -901,8 +968,8 @@ function MarketPage({
                     </span>
                   </div>
                   <div className="mt-4 border-t border-surface pt-4">
-                    <p className="font-display text-2xl font-extrabold text-text-primary">{formatNumber(nft.price)} NEAF</p>
-                    <p className="mt-1 text-sm text-text-muted">Son fiyat {formatNumber(nft.lastSale)} NEAF</p>
+                    <p className="font-display text-2xl font-extrabold text-text-primary">{formatNumber(nft.price)} XLM</p>
+                    <p className="mt-1 text-sm text-text-muted">Stellar pazarinda listelenir</p>
                   </div>
                 </div>
               </button>
@@ -941,7 +1008,7 @@ function MuseumDetailModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">NFT detay penceresi</p>
-            <h3 className="mt-2 font-nft text-4xl text-text-primary md:text-5xl">{nft.name}</h3>
+            <h3 className={`mt-2 ${safeFontClass(nft.name)} text-4xl text-text-primary md:text-5xl`}>{nft.name}</h3>
           </div>
           <button className="rounded-full border border-surface bg-deep p-3 text-text-secondary transition hover:text-text-primary" type="button" onClick={onClose}>
             <X size={18} />
@@ -953,15 +1020,13 @@ function MuseumDetailModal({
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</span>
-              <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-aurora-start">{nft.power}</span>
-              <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary">{formatNumber(nft.price)} NEAF</span>
+              <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary">Stellar koleksiyonu</span>
             </div>
-            <p className="mt-5 text-base leading-7 text-text-secondary">{nft.summary}</p>
+            <p className="mt-5 text-base leading-7 text-text-secondary">{stellarAccessCopy(nft.name)}</p>
             <div className="mt-6 rounded-[1.4rem] border border-surface bg-deep/70 p-5">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Hikayesi</p>
               <p className="mt-3 text-sm leading-7 text-text-secondary">{nft.story}</p>
             </div>
-            <p className="mt-6 text-sm text-text-secondary">Kart detaylari popup icinde acilir; gorsel solda, hikaye ve aciklama sag tarafta yer alir.</p>
           </div>
         </div>
       </motion.div>
@@ -997,21 +1062,25 @@ function MarketDetailModal({
           </button>
         </div>
         <div className="grid gap-6 p-6 md:grid-cols-[0.95fr_1.05fr] md:items-start md:p-8">
-          <NftArtwork nft={nft} className="aspect-square rounded-[1.5rem]" imageClassName="p-6" />
+          <NftArtwork nft={nft} className="aspect-square rounded-[1.5rem]" imageClassName="p-5" />
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">{nft.rarity}</span>
-              <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-aurora-start">{nft.power}</span>
+              <span className="rounded-full border border-surface bg-deep px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-text-secondary">Stellar / XLM</span>
             </div>
-            <h3 className="mt-4 font-nft text-4xl text-text-primary md:text-5xl">{nft.name}</h3>
-            <p className="mt-3 font-display text-3xl font-extrabold text-text-primary">{formatNumber(nft.price)} NEAF</p>
+            <h3 className={`mt-4 ${safeFontClass(nft.name)} text-4xl text-text-primary md:text-5xl`}>{nft.name}</h3>
+            <p className="mt-3 font-display text-3xl font-extrabold text-text-primary">{formatNumber(nft.price)} XLM</p>
             <p className="mt-2 text-sm text-text-secondary">Sahip {nft.owner} · Token #{nft.tokenId}</p>
-            <p className="mt-6 text-base leading-7 text-text-secondary">{nft.summary}</p>
-            <div className="mt-6 rounded-[1.35rem] border border-surface bg-deep/70 p-5">
-              <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Kisa detay</p>
-              <p className="mt-3 text-sm leading-6 text-text-secondary">
-                Son satis {formatNumber(nft.lastSale)} NEAF. Arka plan {nft.backgroundTrait}, ruh hali {nft.moodTrait}, aksesuar {nft.accessoryTrait}.
-              </p>
+            <p className="mt-6 text-base leading-7 text-text-secondary">{stellarAccessCopy(nft.name)}</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[1.25rem] border border-surface bg-deep/70 p-4">
+                <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-muted">Koleksiyon</p>
+                <p className="mt-2 text-sm text-text-secondary">{nft.backgroundTrait}</p>
+              </div>
+              <div className="rounded-[1.25rem] border border-surface bg-deep/70 p-4">
+                <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-muted">Stellar notu</p>
+                <p className="mt-2 text-sm text-text-secondary">{nft.moodTrait} · {nft.accessoryTrait}</p>
+              </div>
             </div>
             <div className="mt-6">
               {isOwned ? (
@@ -1020,7 +1089,7 @@ function MarketDetailModal({
                   type="button"
                   onClick={() => onToggleListing(nft.name)}
                 >
-                  {isListed ? 'Listeden kaldir' : 'Satisa koy'}
+                  {isListed ? 'Listeden kaldir' : 'XLM ile listele'}
                 </button>
               ) : (
                 <p className="font-mono text-xs uppercase tracking-[0.16em] text-text-muted">Bu NFT sana ait degil.</p>
@@ -1038,15 +1107,21 @@ function MarketDetailModal({
 function ProfilePage({
   selectedBackground,
   backgroundOptions,
+  balance,
+  ownedBackgroundIds,
   onSelectBackground,
+  onBuyBackground,
   profileAvatar,
   onAvatarChange,
   wallet,
   walletMessage,
 }: {
   selectedBackground?: { id: string; name: string; image: string };
-  backgroundOptions: { id: string; name: string; image: string }[];
+  backgroundOptions: PickerOption[];
+  balance: number;
+  ownedBackgroundIds: string[];
   onSelectBackground: (id: string) => void;
+  onBuyBackground: (id: string, price: number) => void;
   profileAvatar: string | null;
   onAvatarChange: (url: string | null) => void;
   wallet: WalletConnection | null;
@@ -1072,17 +1147,19 @@ function ProfilePage({
             >
               <Settings2 size={20} />
             </button>
+          </div>
+        ) : null}
+        <div className="relative overflow-hidden rounded-[2rem] border border-surface bg-white shadow-sm">
+          {isOwnProfile ? (
             <button
-              className="inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-surface bg-white/92 text-text-secondary shadow-sm transition hover:border-aurora-mid hover:text-aurora-start"
+              className="absolute right-6 top-6 z-20 inline-flex h-20 w-20 items-center justify-center overflow-hidden rounded-[1.75rem] border border-surface bg-white/94 text-text-secondary shadow-lg transition hover:border-aurora-mid hover:text-aurora-start"
               type="button"
               onClick={() => inputRef.current?.click()}
               aria-label="Profil resmi ekle"
             >
-              {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="Profil resmi" /> : <span className="font-soft text-lg">+</span>}
+              {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="Profil resmi" /> : <span className="font-soft text-3xl">+</span>}
             </button>
-          </div>
-        ) : null}
-        <div className="overflow-hidden rounded-[2rem] border border-surface bg-white shadow-sm">
+          ) : null}
           <div className="relative h-[40rem] bg-[#f8f3e7]">
             <img className="h-full w-full object-contain object-center" src={selectedBackground?.image} alt={selectedBackground?.name ?? 'Profil arka plani'} />
             <div className="absolute inset-0 bg-gradient-to-t from-white/92 via-white/18 to-transparent" />
@@ -1113,8 +1190,11 @@ function ProfilePage({
           subtitle="Profil ayarlari"
           selectedTreeId={selectedBackground?.id ?? ''}
           options={backgroundOptions}
+          balance={balance}
+          ownedOptionIds={ownedBackgroundIds}
           imageClassName="object-cover"
           onClose={() => setSettingsOpen(false)}
+          onPurchase={onBuyBackground}
           onSelect={(id) => {
             onSelectBackground(id);
             setSettingsOpen(false);
@@ -1128,7 +1208,7 @@ function ProfilePage({
 function LeaderboardPage({
   players,
 }: {
-  players: { name: string; badge: string; taps: number; balance: number; ownedCount: number; isSelf: boolean }[];
+  players: LeaderboardPlayer[];
 }) {
   const navigate = useNavigate();
   const [mode, setMode] = useState<LeaderboardMode>('taps');
@@ -1165,9 +1245,14 @@ function LeaderboardPage({
             <div className={`grid h-11 w-11 place-items-center rounded-2xl font-display font-extrabold ${index < 3 ? 'bg-aurora-mid/10 text-aurora-start' : 'bg-deep text-text-secondary'}`}>
               {index + 1}
             </div>
-            <div>
-              <p className="font-nft text-2xl text-text-primary">{player.name}</p>
-              <p className="mt-1 inline-flex rounded-full border border-surface bg-deep px-3 py-1 font-soft text-xs text-text-secondary">{player.badge}</p>
+            <div className="flex items-center gap-4">
+              <div className={`grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[1.15rem] bg-gradient-to-br ${player.accent} text-sm font-display font-extrabold text-text-primary`}>
+                {player.avatar ? <img className="h-full w-full object-cover" src={player.avatar} alt={`${player.name} avatar`} /> : initialsFromName(player.name)}
+              </div>
+              <div>
+                <p className={`${safeFontClass(player.name)} text-2xl text-text-primary`}>{player.name}</p>
+                <p className="mt-1 inline-flex rounded-full border border-surface bg-deep px-3 py-1 font-soft text-xs text-text-secondary">{player.badge}</p>
+              </div>
             </div>
             <div className="justify-self-end text-right">
               <p className="font-display text-lg font-extrabold">
