@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -19,6 +19,7 @@ import {
   Search,
   Settings2,
   SlidersHorizontal,
+  TreePine,
   X,
   Zap,
 } from 'lucide-react';
@@ -26,6 +27,9 @@ import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocatio
 import neafIcon from './assets/neaf.png';
 import ovaBackground from './assets/ova.jpg';
 import lockedCatImage from './assets/locked-cat.png';
+import timedNeafChest from './assets/game/timed-chests/neaf-chest.png';
+import timedCatChest from './assets/game/timed-chests/cat-chest.png';
+import timedEliteChest from './assets/game/timed-chests/elite-chest.png';
 import bubbleMoon from './assets/bubbles/ay.png';
 import bubbleHeart from './assets/bubbles/kalp.png';
 import bubbleMusic from './assets/bubbles/muzik.png';
@@ -82,19 +86,35 @@ type CatDropResult = {
   forced?: boolean;
 };
 
-type LootboxReward =
-  | {
-      id: string;
-      kind: 'cat';
-      drop: CatDropResult;
-      forced?: boolean;
-    }
+type LootboxTier = 'Legendary' | 'Epic' | 'Rare' | 'Common';
+
+type LootboxReward = {
+  id: string;
+  tier: LootboxTier;
+  drops: CatDropResult[];
+  forced?: boolean;
+};
+
+type TimedChestReward =
   | {
       id: string;
       kind: 'neaf';
       amount: number;
-      forced?: boolean;
+    }
+  | {
+      id: string;
+      kind: 'cat';
+      drop: CatDropResult;
     };
+
+type TimedChestId = 'neaf' | 'cat' | 'elite';
+type TimedChestState = Record<TimedChestId, number>;
+
+type DropToastState = {
+  drop: CatDropResult;
+  index: number;
+  total: number;
+};
 
 type OwnedInventory = Record<string, number>;
 
@@ -109,6 +129,7 @@ type WalletProfileSnapshot = {
   profileDisplayName: string;
   selectedProfileCatNames: string[];
   selectedProfileBackgroundId: string;
+  timedChests: TimedChestState;
   savedAt: string;
   lastChainTxHash?: string;
 };
@@ -184,8 +205,6 @@ const marketOwners = ['MOTTO45', 'neafguild', 'catkeeper', 'sorobanlabs', 'novae
 const marketBackgrounds = ['Gunesli Doku', 'Mavi Sis', 'Pembe Aura', 'Cam Bahce'];
 const marketMoods = ['Merakli', 'Atik', 'Sakin', 'Keskin'];
 const marketAccessories = ['Kolye', 'Alev Deseni', 'Pixel Isik', 'Retro Rozet', 'Aurora Iz'];
-const comboCycleLength = 25;
-
 function buildNftSummary(name: string, rarity: string) {
   return `${name} Emira evreninde ${rarity.toLowerCase()} sinifinda yer alan ozel bir koleksiyon parcasi.`;
 }
@@ -536,9 +555,9 @@ const upgrades = [
     id: 'tap-boost',
     name: 'Tap Boost',
     description: 'Her tiklamada daha fazla NEAF kazan.',
-    price: 1200,
-    boost: 2,
-    bonus: '+2 tap gucu',
+    price: 600,
+    boost: 1,
+    bonus: '+1 tap gucu',
     kind: 'tap' as UpgradeKind,
     icon: Zap,
   },
@@ -546,7 +565,7 @@ const upgrades = [
     id: 'hourly-flow',
     name: 'Hourly Flow',
     description: 'Her saat basi gelen pasif NEAF miktarini arttirir.',
-    price: 4600,
+    price: 1150,
     boost: 8,
     bonus: '+8/saat pasif NEAF',
     kind: 'passive' as UpgradeKind,
@@ -555,10 +574,10 @@ const upgrades = [
   {
     id: 'nft-drop-lens',
     name: 'Kedi Sans Mercegi',
-    description: 'Her seviyede Common +%1, Rare +%0.1, Epic +%0.01, Legendary +%0.001 sans ekler.',
-    price: 9200,
-    boost: 1,
-    bonus: '+1% temel NFT sansi',
+    description: 'Her seviyede lootbox bulma sansini arttirir.',
+    price: 2300,
+    boost: 0.1,
+    bonus: '+0.1% lootbox sansi',
     kind: 'luck' as UpgradeKind,
     icon: Gem,
   },
@@ -570,12 +589,41 @@ type LeaderboardMode = 'taps' | 'balance' | 'owned';
 const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
 const formatPercent = (value: number) => (value >= 1 && Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
 const modalRoot = typeof document !== 'undefined' ? document.body : null;
-const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + Math.log2(level + 1) * 1.25 + level * 0.18));
-const dropChanceMultiplier: Record<Rarity, number> = {
-  Common: 1,
-  Rare: 0.1,
-  Epic: 0.01,
-  Legendary: 0.001,
+const calculateUpgradePrice = (basePrice: number, level: number) => Math.round(basePrice * (1 + level * 0.38 + Math.pow(level, 1.34) * 0.22));
+const lootboxTierConfigs: Record<LootboxTier, { cats: number; label: string; tone: string; iconTone: string; Icon: typeof Gem }> = {
+  Legendary: {
+    cats: 4,
+    label: 'Efsanevi Lootbox',
+    tone: 'from-amber-300 via-orange-300 to-rose-400 border-amber-900 shadow-[0_24px_60px_rgba(217,119,6,0.42)]',
+    iconTone: 'text-amber-700',
+    Icon: Gem,
+  },
+  Epic: {
+    cats: 3,
+    label: 'Epic Lootbox',
+    tone: 'from-fuchsia-300 via-violet-300 to-indigo-400 border-violet-900 shadow-[0_24px_60px_rgba(124,58,237,0.38)]',
+    iconTone: 'text-violet-700',
+    Icon: Zap,
+  },
+  Rare: {
+    cats: 2,
+    label: 'Rare Lootbox',
+    tone: 'from-sky-300 via-cyan-300 to-blue-400 border-sky-900 shadow-[0_24px_60px_rgba(14,165,233,0.36)]',
+    iconTone: 'text-sky-700',
+    Icon: Search,
+  },
+  Common: {
+    cats: 1,
+    label: 'Common Lootbox',
+    tone: 'from-emerald-200 via-lime-200 to-teal-300 border-emerald-900 shadow-[0_24px_60px_rgba(16,185,129,0.32)]',
+    iconTone: 'text-emerald-700',
+    Icon: Grid3X3,
+  },
+};
+const timedChestDurations: TimedChestState = {
+  neaf: 20 * 60,
+  cat: 40 * 60,
+  elite: 60 * 60,
 };
 const bubbleImages = [bubbleMoon, bubbleHeart, bubbleMusic, bubbleDots, bubbleQuestion, bubbleStar];
 const starterCatNames = ['Seker Kedi', 'Mavi Kedi', 'Coin Kedisi'];
@@ -677,6 +725,31 @@ function createStarterUpgradeLevels(): Record<UpgradeId, number> {
   };
 }
 
+function createStarterTimedChests(): TimedChestState {
+  return { ...timedChestDurations };
+}
+
+function normalizeTimedChests(value: unknown): TimedChestState {
+  const source = value && typeof value === 'object' ? (value as Partial<Record<TimedChestId, number>>) : {};
+  const read = (id: TimedChestId) => {
+    const next = Number(source[id]);
+    return Number.isFinite(next) ? Math.min(timedChestDurations[id], Math.max(0, next)) : timedChestDurations[id];
+  };
+  return {
+    neaf: read('neaf'),
+    cat: read('cat'),
+    elite: read('elite'),
+  };
+}
+
+function formatCountdown(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
 function inventoryToCatPairs(inventory: OwnedInventory) {
   return nftCollection.flatMap((nft) => {
     const count = inventory[nft.name] ?? 0;
@@ -764,6 +837,7 @@ function readWalletProfileSnapshot(address: string): WalletProfileSnapshot | nul
       profileDisplayName: typeof parsed.profileDisplayName === 'string' ? parsed.profileDisplayName : 'Emira Dreamer',
       selectedProfileCatNames: Array.isArray(parsed.selectedProfileCatNames) ? parsed.selectedProfileCatNames.filter((name) => typeof name === 'string') : starterCatNames,
       selectedProfileBackgroundId: typeof parsed.selectedProfileBackgroundId === 'string' ? parsed.selectedProfileBackgroundId : (profileBackgroundOptions[0]?.id ?? ''),
+      timedChests: normalizeTimedChests(parsed.timedChests),
       savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
       lastChainTxHash: typeof parsed.lastChainTxHash === 'string' ? parsed.lastChainTxHash : undefined,
     };
@@ -780,43 +854,38 @@ function createLootboxId() {
   return `loot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function rollLootboxCat(baseChancePercent: number, forced = false): CatDropResult {
-  if (forced) return forceCatDrop();
-  const rarityRoll = Math.random() * 100;
-  const rarity: Rarity = rarityRoll < 0.1 ? 'Legendary' : rarityRoll < 1.1 ? 'Epic' : rarityRoll < 10.1 ? 'Rare' : 'Common';
-  const candidates = nftCollection.filter((nft) => nft.rarity === rarity);
-  const fallbackCandidates = candidates.length ? candidates : nftCollection;
-  return {
-    nft: fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)],
-    chance: baseChancePercent * dropChanceMultiplier[rarity],
-  };
+function createTimedRewardId() {
+  return `timed-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function rollLootboxReward(baseChancePercent: number, tapPower: number, forced = false): LootboxReward | null {
-  if (!forced && Math.random() * 100 > baseChancePercent) return null;
-  if (!forced && Math.random() < 0.55) {
-    const amount = Math.round((850 + Math.random() * 4150) * Math.max(1, tapPower));
-    return {
-      id: createLootboxId(),
-      kind: 'neaf',
-      amount,
-    };
-  }
+function rollLootboxTier(forced = false): LootboxTier {
+  if (forced) return 'Common';
+  const tierRoll = Math.random() * 100;
+  if (tierRoll < 3) return 'Legendary';
+  if (tierRoll < 13) return 'Epic';
+  if (tierRoll < 40) return 'Rare';
+  return 'Common';
+}
+
+function rollRandomCatDrop(baseChancePercent: number, forced = false, candidates = nftCollection): CatDropResult {
+  const fallbackCandidates = candidates.length ? candidates : nftCollection;
+  const nft = fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)];
   return {
-    id: createLootboxId(),
-    kind: 'cat',
-    drop: rollLootboxCat(baseChancePercent, forced),
+    nft,
+    chance: forced ? 100 : baseChancePercent,
     forced,
   };
 }
 
-function forceCatDrop(): CatDropResult {
-  const candidates = nftCollection.filter((nft) => nft.rarity === 'Common');
-  const fallbackCandidates = candidates.length ? candidates : nftCollection;
+function rollLootboxReward(baseChancePercent: number, forced = false): LootboxReward | null {
+  if (!forced && Math.random() * 100 > baseChancePercent) return null;
+  const tier = rollLootboxTier(forced);
+  const catCount = lootboxTierConfigs[tier].cats;
   return {
-    nft: fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)],
-    chance: 100,
-    forced: true,
+    id: createLootboxId(),
+    tier,
+    drops: Array.from({ length: catCount }, () => rollRandomCatDrop(baseChancePercent, forced)),
+    forced,
   };
 }
 
@@ -874,8 +943,6 @@ function GameApp() {
   const [balance, setBalance] = useState(128450);
   const [tapPower, setTapPower] = useState(1);
   const [passiveIncome, setPassiveIncome] = useState(120);
-  const [nftDropChance, setNftDropChance] = useState(1);
-  const [combo, setCombo] = useState(1);
   const [selectedTreeId, setSelectedTreeId] = useState(() => homeTreeOptions[0]?.id ?? '');
   const [ownedTreeIds, setOwnedTreeIds] = useState<string[]>(() => (homeTreeOptions[0] ? [homeTreeOptions[0].id] : []));
   const [selectedProfileBackgroundId, setSelectedProfileBackgroundId] = useState(() => profileBackgroundOptions[0]?.id ?? '');
@@ -886,10 +953,12 @@ function GameApp() {
   const [upgradeLevels, setUpgradeLevels] = useState<Record<UpgradeId, number>>(() => createStarterUpgradeLevels());
   const [owned, setOwned] = useState<OwnedInventory>(() => createStarterInventory());
   const [listedNftNames, setListedNftNames] = useState<string[]>([]);
-  const [lastDrop, setLastDrop] = useState<CatDropResult | null>(null);
-  const [dropToast, setDropToast] = useState<CatDropResult | null>(null);
+  const [timedChests, setTimedChests] = useState<TimedChestState>(() => createStarterTimedChests());
+  const [dropToast, setDropToast] = useState<DropToastState | null>(null);
   const [lootboxReward, setLootboxReward] = useState<LootboxReward | null>(null);
   const [lootboxStage, setLootboxStage] = useState<'opening' | 'revealed'>('opening');
+  const [lootboxDropIndex, setLootboxDropIndex] = useState(0);
+  const [timedChestReward, setTimedChestReward] = useState<TimedChestReward | null>(null);
   const [tapCount, setTapCount] = useState(0);
   const [profileDisplayName, setProfileDisplayName] = useState('Emira Dreamer');
   const [selectedProfileCatNames, setSelectedProfileCatNames] = useState<string[]>(() => starterCatNames);
@@ -901,7 +970,6 @@ function GameApp() {
   const [currentPlayer, setCurrentPlayer] = useState<ProfileRecord | null>(null);
   const [remoteLeaderboard, setRemoteLeaderboard] = useState<ProfileRecord[]>([]);
   const [marketListings, setMarketListings] = useState<MarketListing[]>(() => seededMarketListings);
-  const dropMissesRef = useRef(0);
   const [walletSupport, setWalletSupport] = useState<{ telegram: string[]; web: string[] } | null>(null);
   const [appConfig, setAppConfig] = useState<AppRuntimeConfig | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -910,6 +978,7 @@ function GameApp() {
   const loadedWalletProfileRef = useRef<string | null>(null);
   const appliedLootboxIdsRef = useRef<Set<string>>(new Set());
   const telegramLaunchUrl = appConfig?.telegram?.launchUrl ?? fallbackTelegramLaunchUrl;
+  const lootboxChance = Number((1 + upgradeLevels['nft-drop-lens'] * 0.1).toFixed(1));
 
   const reloadLeaderboard = () =>
     fetchLeaderboard('taps')
@@ -1042,6 +1111,7 @@ function GameApp() {
       setProfileDisplayName(snapshot.profileDisplayName);
       setSelectedProfileBackgroundId(snapshot.selectedProfileBackgroundId);
       setSelectedProfileCatNames(snapshot.selectedProfileCatNames.slice(0, 3));
+      setTimedChests(snapshot.timedChests);
       setChainSyncMessage(snapshot.lastChainTxHash ? `Son zincir kaydi ${snapshot.lastChainTxHash.slice(0, 10)}...` : 'Cuzdan profili yuklendi.');
     }, 0);
 
@@ -1075,10 +1145,11 @@ function GameApp() {
       profileDisplayName,
       selectedProfileCatNames,
       selectedProfileBackgroundId,
+      timedChests,
       savedAt: new Date().toISOString(),
       lastChainTxHash: readWalletProfileSnapshot(wallet.address)?.lastChainTxHash,
     });
-  }, [balance, owned, ownedProfileBackgroundIds, ownedTreeIds, profileDisplayName, selectedProfileBackgroundId, selectedProfileCatNames, selectedTreeId, tapCount, upgradeLevels, wallet]);
+  }, [balance, owned, ownedProfileBackgroundIds, ownedTreeIds, profileDisplayName, selectedProfileBackgroundId, selectedProfileCatNames, selectedTreeId, tapCount, timedChests, upgradeLevels, wallet]);
 
   const handleConnectWallet = async () => {
     setWalletMenuOpen(false);
@@ -1140,6 +1211,7 @@ function GameApp() {
           selectedProfileCatNames,
           selectedProfileBackgroundId,
           profileDisplayName,
+          timedChests,
           savedAt: new Date().toISOString(),
         }),
         balance,
@@ -1152,6 +1224,7 @@ function GameApp() {
         selectedProfileCatNames,
         selectedProfileBackgroundId,
         profileDisplayName,
+        timedChests,
         savedAt: new Date().toISOString(),
         lastChainTxHash: receipt.hash,
       });
@@ -1164,19 +1237,15 @@ function GameApp() {
   };
 
   const tapCoin = () => {
-    const gain = tapPower * combo;
     setTapCount((current) => current + 1);
-    setBalance((current) => current + gain);
-    setCombo((current) => (current >= comboCycleLength ? 1 : current + 1));
+    setBalance((current) => current + tapPower);
 
     if (walletState === 'connected' && wallet) {
-      const reward = rollLootboxReward(nftDropChance, tapPower, dropMissesRef.current >= 49);
+      const reward = rollLootboxReward(lootboxChance);
       if (reward) {
-        dropMissesRef.current = 0;
         setLootboxReward(reward);
         setLootboxStage('opening');
-      } else {
-        dropMissesRef.current += 1;
+        setLootboxDropIndex(0);
       }
     }
 
@@ -1208,10 +1277,14 @@ function GameApp() {
     if (kind === 'passive') {
       setPassiveIncome((current) => current + boost);
     }
-    if (kind === 'luck') {
-      setNftDropChance((current) => Number((current + boost).toFixed(1)));
-    }
     setUpgradeLevels((current) => ({ ...current, [id]: current[id] + 1 }));
+  };
+
+  const resetUpgradesOnly = () => {
+    setUpgradeLevels(createStarterUpgradeLevels());
+    setTapPower(1);
+    setPassiveIncome(120);
+    setChainSyncMessage('Yukseltmeler sifirlandi. Diger ilerleme korunuyor.');
   };
 
   const buyTree = (id: string, price: number) => {
@@ -1394,6 +1467,17 @@ function GameApp() {
   }, [telegramContext.isTelegram, walletSupport]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      setTimedChests((current) => ({
+        neaf: Math.max(0, current.neaf - 1),
+        cat: Math.max(0, current.cat - 1),
+        elite: Math.max(0, current.elite - 1),
+      }));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     if (!dropToast) return;
     const timeout = window.setTimeout(() => setDropToast(null), 4200);
     return () => window.clearTimeout(timeout);
@@ -1404,12 +1488,10 @@ function GameApp() {
     const timeout = window.setTimeout(() => {
       if (!appliedLootboxIdsRef.current.has(lootboxReward.id)) {
         appliedLootboxIdsRef.current.add(lootboxReward.id);
-        if (lootboxReward.kind === 'cat') {
-          setOwned((current) => addOwnedCat(current, lootboxReward.drop.nft.name));
-          setLastDrop(lootboxReward.drop);
-          setDropToast(lootboxReward.drop);
-        } else {
-          setBalance((current) => current + lootboxReward.amount);
+        const firstDrop = lootboxReward.drops[0];
+        if (firstDrop) {
+          setOwned((current) => addOwnedCat(current, firstDrop.nft.name));
+          setDropToast({ drop: firstDrop, index: 0, total: lootboxReward.drops.length });
         }
       }
       setLootboxStage('revealed');
@@ -1417,18 +1499,48 @@ function GameApp() {
     return () => window.clearTimeout(timeout);
   }, [lootboxReward, lootboxStage]);
 
-  useEffect(() => {
+  const advanceLootboxDrop = () => {
     if (!lootboxReward || lootboxStage !== 'revealed') return;
-    const timeout = window.setTimeout(() => setLootboxReward(null), 2600);
-    return () => window.clearTimeout(timeout);
-  }, [lootboxReward, lootboxStage]);
+    const nextIndex = lootboxDropIndex + 1;
+    if (nextIndex >= lootboxReward.drops.length) {
+      setLootboxReward(null);
+      setDropToast(null);
+      return;
+    }
+    const nextDrop = lootboxReward.drops[nextIndex];
+    setLootboxDropIndex(nextIndex);
+    setOwned((current) => addOwnedCat(current, nextDrop.nft.name));
+    setDropToast({ drop: nextDrop, index: nextIndex, total: lootboxReward.drops.length });
+  };
+
+  const claimTimedChest = (id: TimedChestId) => {
+    if (walletState !== 'connected' || !wallet || timedChests[id] > 0) return;
+
+    if (id === 'neaf') {
+      setBalance((current) => current + passiveIncome);
+      setTimedChestReward({ id: createTimedRewardId(), kind: 'neaf', amount: passiveIncome });
+      setTimedChests((current) => ({ ...current, neaf: timedChestDurations.neaf }));
+      return;
+    }
+
+    const candidates =
+      id === 'cat'
+        ? nftCollection.filter((nft) => nft.rarity !== 'Legendary')
+        : nftCollection.filter((nft) => nft.rarity === 'Legendary' || nft.rarity === 'Epic');
+    const drop = rollRandomCatDrop(100, true, candidates);
+    setOwned((current) => addOwnedCat(current, drop.nft.name));
+    setDropToast({ drop, index: 0, total: 1 });
+    setTimedChestReward({ id: createTimedRewardId(), kind: 'cat', drop });
+    setTimedChests((current) => ({ ...current, [id]: timedChestDurations[id] }));
+  };
 
   return (
     <div className={`relative overflow-x-hidden bg-void text-text-primary ${isHomePage ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
       <GridBackground />
       <ScrollToTop />
-      <CatDropToast drop={dropToast} />
-      <LootboxOverlay reward={lootboxReward} stage={lootboxStage} />
+      <CatDropToast toast={dropToast} onAdvance={advanceLootboxDrop} />
+      <LootboxOverlay reward={lootboxReward} stage={lootboxStage} dropIndex={lootboxDropIndex} onAdvance={advanceLootboxDrop} />
+      <TimedChestRewardOverlay reward={timedChestReward} onClose={() => setTimedChestReward(null)} />
 
       <motion.nav
         initial={{ y: -100 }}
@@ -1579,19 +1691,19 @@ function GameApp() {
                 balance={balance}
                 tapPower={tapPower}
                 passiveIncome={passiveIncome}
-                nftDropChance={nftDropChance}
-                combo={combo}
-                comboLimit={comboCycleLength}
+                nftDropChance={lootboxChance}
                 selectedTree={homeTreeOptions.find((tree) => tree.id === selectedTreeId) ?? homeTreeOptions[0]}
                 treeOptions={homeTreeOptions}
                 ownedTreeIds={ownedTreeIds}
                 upgradeLevels={upgradeLevels}
+                timedChests={timedChests}
                 walletState={walletState}
-                lastDrop={lastDrop}
                 onTap={tapCoin}
                 onSelectTree={setSelectedTreeId}
                 onBuyTree={buyTree}
                 onBuyUpgrade={buyUpgrade}
+                onResetUpgrades={resetUpgradesOnly}
+                onClaimTimedChest={claimTimedChest}
               />
             }
           />
@@ -1645,17 +1757,25 @@ function GameApp() {
   );
 }
 
-function CatDropToast({ drop }: { drop: CatDropResult | null }) {
+function CatDropToast({ toast, onAdvance }: { toast: DropToastState | null; onAdvance: () => void }) {
+  const drop = toast?.drop ?? null;
+  const remaining = toast ? toast.total - toast.index - 1 : 0;
   return (
     <AnimatePresence>
       {drop ? (
         <motion.div
-          key={drop.nft.name}
+          key={`${drop.nft.name}-${toast?.index ?? 0}`}
           initial={{ opacity: 0, x: 120, scale: 0.96 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: 140, scale: 0.96 }}
           transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-          className="fixed right-5 top-28 z-[70] flex w-[min(22rem,calc(100vw-2rem))] items-center gap-4 rounded-[1.35rem] border border-emerald-200 bg-white/96 p-4 text-emerald-900 shadow-2xl backdrop-blur"
+          className="fixed right-5 top-28 z-[70] flex w-[min(22rem,calc(100vw-2rem))] cursor-pointer items-center gap-4 rounded-[1.35rem] border border-emerald-200 bg-white/96 p-4 text-emerald-900 shadow-2xl backdrop-blur"
+          role="button"
+          tabIndex={0}
+          onClick={onAdvance}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') onAdvance();
+          }}
         >
           <NftArtwork nft={drop.nft} className="h-20 w-20 shrink-0 rounded-2xl" imageClassName="p-2" />
           <div className="min-w-0">
@@ -1664,7 +1784,7 @@ function CatDropToast({ drop }: { drop: CatDropResult | null }) {
             </p>
             <p className={`${safeFontClass(drop.nft.name)} truncate text-2xl text-text-primary`}>{drop.nft.name}</p>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-              {drop.nft.rarity} / sans %{formatPercent(drop.chance)}
+              {drop.nft.rarity} / kalan {remaining}
             </p>
           </div>
         </motion.div>
@@ -1673,7 +1793,21 @@ function CatDropToast({ drop }: { drop: CatDropResult | null }) {
   );
 }
 
-function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage: 'opening' | 'revealed' }) {
+function LootboxOverlay({
+  reward,
+  stage,
+  dropIndex,
+  onAdvance,
+}: {
+  reward: LootboxReward | null;
+  stage: 'opening' | 'revealed';
+  dropIndex: number;
+  onAdvance: () => void;
+}) {
+  const tierConfig = reward ? lootboxTierConfigs[reward.tier] : lootboxTierConfigs.Common;
+  const LootboxIcon = tierConfig.Icon;
+  const activeDrop = reward?.drops[dropIndex];
+  const remaining = reward ? reward.drops.length - dropIndex - 1 : 0;
   const content = (
     <AnimatePresence>
       {reward ? (
@@ -1683,6 +1817,7 @@ function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          onClick={stage === 'revealed' ? onAdvance : undefined}
         >
           <motion.div
             className="relative grid min-h-[22rem] w-[min(28rem,calc(100vw-2rem))] place-items-center rounded-[2rem] border border-white/60 bg-white/92 p-8 text-center shadow-2xl"
@@ -1690,9 +1825,13 @@ function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage
             animate={{ y: 0, scale: 1 }}
             exit={{ y: 30, scale: 0.94 }}
             transition={{ type: 'spring', stiffness: 210, damping: 22 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (stage === 'revealed') onAdvance();
+            }}
           >
             <motion.div
-              className="absolute inset-6 rounded-[1.7rem] bg-[radial-gradient(circle_at_center,rgba(255,225,138,0.5),transparent_62%)]"
+              className="absolute inset-6 rounded-[1.7rem] bg-[radial-gradient(circle_at_center,rgba(255,225,138,0.48),transparent_62%)]"
               animate={{ opacity: stage === 'revealed' ? 1 : [0.35, 0.75, 0.35], scale: stage === 'revealed' ? 1.12 : [1, 1.08, 1] }}
               transition={{ duration: 0.55, repeat: stage === 'opening' ? Infinity : 0 }}
               aria-hidden="true"
@@ -1703,31 +1842,28 @@ function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage
                 animate={{ rotate: [-4, 5, -3, 4, 0], y: [0, -8, 0] }}
                 transition={{ duration: 0.5, repeat: Infinity, repeatType: 'mirror' }}
               >
-                <div className="h-36 w-44 rounded-[1.4rem] border-4 border-amber-800 bg-gradient-to-br from-amber-300 via-yellow-300 to-orange-400 shadow-[0_22px_50px_rgba(120,53,15,0.35)]">
-                  <div className="h-9 rounded-t-[1rem] border-b-4 border-amber-800 bg-gradient-to-r from-orange-500 via-amber-300 to-orange-500" />
-                  <div className="mx-auto mt-6 grid h-16 w-16 place-items-center rounded-full border-4 border-amber-800 bg-white/85">
-                    <Gem className="text-amber-600" size={30} />
+                <div className={`h-36 w-44 rounded-[1.4rem] border-4 bg-gradient-to-br ${tierConfig.tone}`}>
+                  <div className="h-9 rounded-t-[1rem] border-b-4 border-current bg-white/24" />
+                  <div className="mx-auto mt-6 grid h-16 w-16 place-items-center rounded-full border-4 border-current bg-white/85">
+                    <LootboxIcon className={tierConfig.iconTone} size={30} />
                   </div>
                 </div>
-                <p className="mt-6 font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Lootbox aciliyor</p>
+                <p className="mt-6 font-mono text-xs uppercase tracking-[0.18em] text-text-muted">{tierConfig.label} aciliyor</p>
               </motion.div>
             ) : (
               <motion.div className="relative" initial={{ opacity: 0, scale: 0.72 }} animate={{ opacity: 1, scale: 1 }}>
-                {reward.kind === 'cat' ? (
+                {activeDrop ? (
                   <>
-                    <NftArtwork nft={reward.drop.nft} className="mx-auto h-36 w-36 rounded-[1.5rem]" imageClassName="p-3" />
+                    <NftArtwork nft={activeDrop.nft} className="mx-auto h-36 w-36 rounded-[1.5rem]" imageClassName="p-3" />
                     <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-600">Kedi cikti</p>
-                    <p className={`${safeFontClass(reward.drop.nft.name)} mt-1 text-4xl text-text-primary`}>{reward.drop.nft.name}</p>
-                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">
-                      {reward.drop.nft.rarity} / sans %{formatPercent(reward.drop.chance)}
-                    </p>
+                    <p className={`${safeFontClass(activeDrop.nft.name)} mt-1 text-4xl text-text-primary`}>{activeDrop.nft.name}</p>
+                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">{activeDrop.nft.rarity}</p>
+                    <div className="absolute -bottom-7 right-0 grid h-9 min-w-9 place-items-center rounded-full border border-surface bg-white px-3 font-mono text-xs uppercase tracking-[0.12em] text-text-primary shadow-sm">
+                      {remaining}
+                    </div>
                   </>
                 ) : (
-                  <>
-                    <img className="mx-auto h-28 w-28 object-contain drop-shadow-[0_18px_28px_rgba(15,108,189,0.24)]" src={neafIcon} alt="" aria-hidden="true" />
-                    <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-aurora-start">NEAF cikti</p>
-                    <p className="mt-1 font-display text-5xl font-extrabold text-text-primary">+{formatNumber(reward.amount)}</p>
-                  </>
+                  <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Lootbox tamamlandi</p>
                 )}
               </motion.div>
             )}
@@ -1740,40 +1876,122 @@ function LootboxOverlay({ reward, stage }: { reward: LootboxReward | null; stage
   return modalRoot ? createPortal(content, modalRoot) : content;
 }
 
+function TimedChestRewardOverlay({ reward, onClose }: { reward: TimedChestReward | null; onClose: () => void }) {
+  const content = (
+    <AnimatePresence>
+      {reward ? (
+        <motion.div
+          key={reward.id}
+          className="fixed inset-0 z-[90] grid place-items-center bg-zinc-900/44 px-6 backdrop-grayscale backdrop-blur-[2px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <motion.div
+            className="relative grid min-h-[20rem] w-[min(26rem,calc(100vw-2rem))] place-items-center rounded-[2rem] border border-white/60 bg-white/94 p-8 text-center shadow-2xl"
+            initial={{ y: 30, scale: 0.9 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={{ y: 24, scale: 0.94 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+          >
+            <div className="absolute inset-6 rounded-[1.7rem] bg-[radial-gradient(circle_at_center,rgba(134,239,172,0.34),transparent_64%)]" aria-hidden="true" />
+            <motion.div className="relative" initial={{ opacity: 0, scale: 0.72 }} animate={{ opacity: 1, scale: 1 }}>
+              {reward.kind === 'cat' ? (
+                <>
+                  <NftArtwork nft={reward.drop.nft} className="mx-auto h-36 w-36 rounded-[1.5rem]" imageClassName="p-3" />
+                  <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-600">Sandik odulu</p>
+                  <p className={`${safeFontClass(reward.drop.nft.name)} mt-1 text-4xl text-text-primary`}>{reward.drop.nft.name}</p>
+                  <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">{reward.drop.nft.rarity}</p>
+                </>
+              ) : (
+                <>
+                  <img className="mx-auto h-28 w-28 object-contain drop-shadow-[0_18px_28px_rgba(15,108,189,0.24)]" src={neafIcon} alt="" aria-hidden="true" />
+                  <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-aurora-start">Sandik odulu</p>
+                  <p className="mt-1 font-display text-5xl font-extrabold text-text-primary">+{formatNumber(reward.amount)}</p>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+
+  return modalRoot ? createPortal(content, modalRoot) : content;
+}
+
+function TimedChestButton({
+  id,
+  title,
+  remaining,
+  image,
+  disabled,
+  onClaim,
+}: {
+  id: TimedChestId;
+  title: string;
+  remaining: number;
+  image: string;
+  disabled: boolean;
+  onClaim: (id: TimedChestId) => void;
+}) {
+  const ready = remaining <= 0;
+  return (
+    <motion.button
+      className={`group grid w-28 justify-items-center gap-2 text-center transition ${
+        ready && !disabled ? 'hover:-translate-y-0.5' : 'opacity-75'
+      }`}
+      type="button"
+      aria-disabled={disabled || !ready}
+      whileTap={{ scale: 0.94 }}
+      onClick={() => onClaim(id)}
+    >
+      <p className="font-display text-base font-extrabold leading-none text-text-primary">{title}</p>
+      <img className="h-24 w-24 object-contain drop-shadow-[0_15px_22px_rgba(15,23,42,0.22)]" src={image} alt="" aria-hidden="true" />
+      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary">{ready ? 'Topla' : formatCountdown(remaining)}</p>
+    </motion.button>
+  );
+}
+
 function HomePage({
   balance,
   tapPower,
   passiveIncome,
   nftDropChance,
-  combo,
-  comboLimit,
   selectedTree,
   treeOptions,
   ownedTreeIds,
   upgradeLevels,
+  timedChests,
   walletState,
-  lastDrop,
   onTap,
   onSelectTree,
   onBuyTree,
   onBuyUpgrade,
+  onResetUpgrades,
+  onClaimTimedChest,
 }: {
   balance: number;
   tapPower: number;
   passiveIncome: number;
   nftDropChance: number;
-  combo: number;
-  comboLimit: number;
   selectedTree?: PickerOption;
   treeOptions: PickerOption[];
   ownedTreeIds: string[];
   upgradeLevels: Record<UpgradeId, number>;
+  timedChests: TimedChestState;
   walletState: WalletUiState;
-  lastDrop: CatDropResult | null;
   onTap: () => void;
   onSelectTree: (id: string) => void;
   onBuyTree: (id: string, price: number) => void;
   onBuyUpgrade: (id: UpgradeId, price: number, boost: number, kind: UpgradeKind) => void;
+  onResetUpgrades: () => void;
+  onClaimTimedChest: (id: TimedChestId) => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const treeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1793,15 +2011,41 @@ function HomePage({
 
   return (
     <div className="mx-auto grid h-full max-w-7xl items-center gap-4 lg:grid-cols-[1fr_410px] lg:overflow-hidden">
-      <div className="relative grid h-full place-items-center lg:justify-items-start lg:pl-18 xl:pl-24">
+      <div className="relative grid h-full place-items-center lg:justify-items-start lg:pl-64 xl:pl-72">
         <button
-          className="absolute left-0 top-4 inline-flex h-12 w-12 items-center justify-center rounded-full border border-surface bg-white/92 text-text-secondary shadow-sm transition hover:border-aurora-mid hover:text-aurora-start"
+          className="absolute left-8 top-4 inline-flex h-20 w-20 items-center justify-center rounded-[1.35rem] border border-emerald-300/55 bg-emerald-100/58 text-emerald-800 shadow-[0_16px_30px_rgba(16,185,129,0.16)] backdrop-blur-md transition hover:border-emerald-400/70 hover:bg-emerald-100/72 hover:text-emerald-900"
           type="button"
           onClick={() => setSettingsOpen(true)}
           aria-label="Ana ekran agac ayarlari"
         >
-          <Settings2 size={20} />
+          <TreePine size={34} />
         </button>
+        <div className="absolute left-2 top-28 hidden w-32 justify-items-center gap-4 lg:grid">
+          <TimedChestButton
+            id="neaf"
+            title="NEAF"
+            remaining={timedChests.neaf}
+            image={timedNeafChest}
+            disabled={walletState !== 'connected'}
+            onClaim={onClaimTimedChest}
+          />
+          <TimedChestButton
+            id="cat"
+            title="Kedi"
+            remaining={timedChests.cat}
+            image={timedCatChest}
+            disabled={walletState !== 'connected'}
+            onClaim={onClaimTimedChest}
+          />
+          <TimedChestButton
+            id="elite"
+            title="Parlak"
+            remaining={timedChests.elite}
+            image={timedEliteChest}
+            disabled={walletState !== 'connected'}
+            onClaim={onClaimTimedChest}
+          />
+        </div>
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1832,7 +2076,7 @@ function HomePage({
               <img className="h-8 w-8 object-contain" src={neafIcon} alt="" aria-hidden="true" />
               <span className="font-display text-2xl font-extrabold text-text-primary">{formatNumber(balance)}</span>
             </div>
-            <p className="mt-1 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">NEAF x{combo}/{comboLimit} / +{tapPower}</p>
+            <p className="mt-1 font-mono text-xs uppercase tracking-[0.16em] text-text-muted">+{tapPower} NEAF / tiklama</p>
           </div>
         </motion.div>
       </div>
@@ -1840,37 +2084,29 @@ function HomePage({
       <motion.aside
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
-        className="max-h-[calc(100svh-9rem)] overflow-y-auto rounded-[1.6rem] border border-surface bg-white/92 p-4 shadow-lg backdrop-blur"
+        className="max-h-[calc(100svh-7rem)] min-h-0 overflow-y-auto rounded-[1.6rem] border border-surface bg-white/92 p-4 pb-7 shadow-lg backdrop-blur [scrollbar-width:thin] [scrollbar-color:rgba(15,108,189,0.35)_transparent]"
       >
-        <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted">Yukseltmeler</p>
+        <button
+          className="font-mono text-xs uppercase tracking-[0.18em] text-text-muted"
+          type="button"
+          onClick={(event) => {
+            if (event.altKey && event.shiftKey) onResetUpgrades();
+          }}
+          aria-label="Yukseltmeler"
+        >
+          Yukseltmeler
+        </button>
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <HomeStat label="Tap gucu" value={`+${tapPower}`} />
           <HomeStat label="Pasif/saat" value={formatNumber(passiveIncome)} />
-          <HomeStat label="Lootbox sansi" value={`%${formatPercent(nftDropChance)}`} />
-          <HomeStat label="Bakiye" value={`${formatNumber(balance)} NEAF`} />
+          <HomeStat label="Lootbox sansi" value={`%${formatPercent(nftDropChance)}`} onSecretAction={onResetUpgrades} />
+          <HomeStat label="Bakiye" value={formatNumber(balance)} icon={<img className="h-5 w-5 object-contain" src={neafIcon} alt="" aria-hidden="true" />} />
         </div>
         <div className="mt-3 rounded-2xl border border-surface bg-deep/70 p-3">
-          <div className="grid grid-cols-2 gap-2 text-[11px] text-text-secondary">
-            {(['Common', 'Rare', 'Epic', 'Legendary'] as Rarity[]).map((rarity) => (
-              <div key={rarity} className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2">
-                <span>{rarity}</span>
-                <span className="font-mono">%{formatPercent(nftDropChance * dropChanceMultiplier[rarity])}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
-            Lootbox sadece cuzdan bagliyken roll alir.
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+            Lootbox sadece cuzdan bagliyken roll alir. Artik lootboxlar NEAF yerine kedi verir.
           </p>
         </div>
-        {lastDrop ? (
-          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
-            <img className="h-12 w-12 rounded-xl bg-white object-contain p-1" src={lastDrop.nft.image} alt="" aria-hidden="true" />
-            <div>
-              <p className="font-display text-base font-extrabold">{lastDrop.nft.name} acildi</p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.14em]">Roll sansi %{formatPercent(lastDrop.chance)} / {lastDrop.nft.rarity}</p>
-            </div>
-          </div>
-        ) : null}
         <div className="mt-3 space-y-2.5">
           {upgrades.map(({ id, name, description, price, boost, bonus, kind, icon: Icon }) => {
             const level = upgradeLevels[id];
@@ -1894,11 +2130,14 @@ function HomePage({
                   <div>
                     <p className="font-display text-base font-bold">{name}</p>
                     <p className="text-xs leading-4 text-text-secondary">{description}</p>
-                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Seviye {level}</p>
+                    <p className="mt-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">Seviye {level}</p>
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.14em]">
-                  <span>{formatNumber(currentPrice)} NEAF</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <img className="h-4 w-4 object-contain" src={neafIcon} alt="" aria-hidden="true" />
+                    {formatNumber(currentPrice)}
+                  </span>
                   <span className="text-aurora-start">{bonus}</span>
                 </div>
               </button>
@@ -3168,10 +3407,28 @@ function walletButtonLabel(state: WalletUiState, wallet: WalletConnection | null
   return 'Cuzdan bagla';
 }
 
-function HomeStat({ label, value }: { label: string; value: string }) {
+function HomeStat({
+  label,
+  value,
+  icon,
+  onSecretAction,
+}: {
+  label: string;
+  value: string;
+  icon?: ReactNode;
+  onSecretAction?: () => void;
+}) {
   return (
-    <div className="rounded-2xl border border-surface bg-deep px-3 py-2.5">
-      <p className="font-display text-base font-extrabold text-text-primary">{value}</p>
+    <div
+      className="rounded-2xl border border-surface bg-deep px-3 py-2.5"
+      onClick={(event) => {
+        if (event.altKey && event.shiftKey) onSecretAction?.();
+      }}
+    >
+      <p className="inline-flex items-center gap-1.5 font-display text-base font-extrabold text-text-primary">
+        {value}
+        {icon}
+      </p>
       <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">{label}</p>
     </div>
   );
