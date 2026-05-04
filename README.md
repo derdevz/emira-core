@@ -1,243 +1,333 @@
 # Emira Core
 
-Emira is a Telegram-style clicker game prototype built for the Stellar / Soroban hackathon flow with Freighter wallet login.
-The repository now contains the React frontend, a Soroban smart contract scaffold, project screenshots, and submission
-artifacts for the final Rise In delivery.
+Emira Core is a Telegram-ready clicker game prototype built for the Stellar / Soroban hackathon track. It combines a React frontend, a lightweight Node.js backend, Telegram Mini App support, WalletConnect and Freighter wallet flows, and real Soroban testnet contract deployment artifacts for rewards and marketplace state.
 
-## Current Scope
+## Problem
 
-- Clicker game frontend with separate pages for home, NFT museum, market, profile, and leaderboard.
-- Lightweight hybrid backend scaffold for profiles, leaderboards, tap validation, and chain-preparation APIs.
-- Wallet abstraction scaffold for Freighter-first web and future WalletConnect Telegram/mobile flows.
-- Telegram auth, session-token, and wallet-link backend scaffold.
-- Optional PostgreSQL-backed persistence with file fallback for local development.
-- Freighter wallet detection, connect flow, wallet menu, address copy, switch, and local disconnect actions.
-- Soroban smart contract scaffold for reward and player progress snapshots.
-- Soroban marketplace contract scaffold for XLM-based Stellar market flows.
-- Soroban build, deploy, and transaction verification scripts for Stellar testnet.
-- Soroban-oriented architecture notes for rewards, NFT ownership, seasonal leaderboards, and off-chain progress.
-- Telegram Mini App integration plan for retention gameplay and mobile wallet flows.
-- Dockerized frontend build and runtime.
-- Submission checklist, screenshots, and transaction hash placeholder.
+Most clicker and casual reward games are fast, but they usually fail in one of two ways:
+
+- every important action stays fully off-chain, so ownership and rewards are weak
+- or every action is pushed on-chain, which makes the game slow, expensive, and unrealistic
+
+For a Telegram-first game, that tradeoff gets worse. Users expect instant gameplay, but hackathon judges expect real blockchain usage.
+
+## Solution
+
+Emira Core uses a hybrid architecture:
+
+1. High-frequency gameplay stays off-chain.
+2. Telegram is used as the daily entry surface.
+3. WalletConnect and Freighter handle wallet-based actions.
+4. Soroban stores durable reward and marketplace state.
+5. Stellar testnet transactions provide verifiable blockchain proof.
+
+This gives the game responsive UX without pretending blockchain should store every tap.
+
+## Live Demo
+
+Frontend:
+[https://emira-core.vercel.app](https://emira-core.vercel.app)
+
+Backend health:
+[https://emira-core.vercel.app/health](https://emira-core.vercel.app/health)
+
+GitHub:
+[https://github.com/Sopwit/emira-core](https://github.com/Sopwit/emira-core)
+
+Marketplace contract:
+`CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI`
+
+Rewards contract:
+`CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD`
+
+Marketplace contract explorer:
+[https://stellar.expert/explorer/testnet/contract/CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI](https://stellar.expert/explorer/testnet/contract/CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI)
+
+Rewards contract explorer:
+[https://stellar.expert/explorer/testnet/contract/CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD](https://stellar.expert/explorer/testnet/contract/CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD)
+
+Marketplace deploy transaction:
+`a025b5e75ba66744f197912a8f1e0d83cee7f9d3d33fe92375f9a73b531ca28c`
+
+Rewards deploy transaction:
+`a3a33e1004ef366c0240b7c3e782c9d2fe5c620558225ef8fd42822c353d8d51`
+
+All recorded transaction hashes:
+[docs/submission/transaction-hash.md](docs/submission/transaction-hash.md)
+
+## Screenshots
+
+### Profile
+
+![Profile preview](./docs/screenshots/profile-preview.png)
+
+### Market Grid
+
+![Market grid](./docs/screenshots/market-grid.png)
+
+### Market Detail
+
+![Market detail](./docs/screenshots/market-grid-detail.png)
+
+### Leaderboard
+
+![Leaderboard](./docs/screenshots/leaderboard.png)
+
+## Hackathon Submission Requirements
+
+This repository includes the requested submission artifacts:
+
+- 🇬🇧 English `README.md`
+- 🔗 Transaction hash proof: [docs/submission/transaction-hash.md](docs/submission/transaction-hash.md)
+- 🖼️ Project screenshots under [docs/screenshots](docs/screenshots)
+
+## Production Architecture
+
+- **Frontend** is deployed on Vercel.
+- **Backend API** runs through the same Vercel deployment via rewrites to `api/index.mjs`.
+- **Telegram Mini App** opens the production frontend URL.
+- **Wallet actions** use WalletConnect in Telegram/mobile and Freighter on desktop.
+- **Soroban contracts** represent durable reward and marketplace logic on Stellar testnet.
+- **Persistence** supports PostgreSQL, with local file fallback for development.
+
+```text
+Telegram / Web User
+  |
+  v
+Vercel Frontend
+  |
+  v
+Vercel API Runtime
+  |
+  +--> Telegram session validation
+  +--> Profile / leaderboard / market APIs
+  +--> Wallet link and prepared chain actions
+  |
+  v
+Stellar Testnet / Soroban
+```
+
+## Production URLs
+
+| Service | URL / Identifier |
+|---|---|
+| Frontend | https://emira-core.vercel.app |
+| Backend Health | https://emira-core.vercel.app/health |
+| GitHub Repository | https://github.com/Sopwit/emira-core |
+| Marketplace Contract | CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI |
+| Rewards Contract | CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD |
+| Marketplace Deploy Tx | a025b5e75ba66744f197912a8f1e0d83cee7f9d3d33fe92375f9a73b531ca28c |
+| Marketplace Init Tx | 9059e4423aa6c9bd7d379a1736dbf5015cb84091aeb02c0c0568e05d7a587df5 |
+| Rewards Deploy Tx | a3a33e1004ef366c0240b7c3e782c9d2fe5c620558225ef8fd42822c353d8d51 |
+| Rewards Init Tx | 2a62f4aabc67eb25a4d44bec9e286d9bdab15291a561048707b34de7e7a5095f |
+
+## Key Features
+
+- Telegram Mini App compatible gameplay
+- Clicker progression with upgrades and NFT drops
+- Profile, museum, market, and leaderboard surfaces
+- WalletConnect support for Telegram and mobile
+- Freighter support for desktop wallet actions
+- Soroban marketplace contract scaffold with listing lifecycle
+- Soroban rewards contract scaffold with reward pool and claim accounting
+- Recorded Stellar testnet transaction hashes
+- Vercel deployment ready frontend and backend integration
+
+## How It Works
+
+1. User opens Emira from web or Telegram.
+2. Telegram session is validated when inside the Mini App.
+3. User starts tapping and progressing off-chain.
+4. Backend serves profile, leaderboard, and market read models.
+5. User connects a Stellar wallet when a durable action is needed.
+6. WalletConnect is used inside Telegram/mobile, Freighter on desktop.
+7. Reward and marketplace actions are represented by Soroban contract logic.
+8. Testnet deployment and init transactions provide blockchain proof for the hackathon.
+
+## Why This Is A Real Blockchain Fit
+
+This is not a generic Web2 game with a token sticker on top.
+
+- Taps, combo, and moment-to-moment gameplay stay off-chain because they are high-frequency.
+- Reward claim accounting belongs on-chain because it needs durable, trust-sensitive state.
+- Marketplace listing state belongs on-chain because ownership changes and sale state must be verifiable.
+- Telegram gives distribution and retention, while Soroban gives credibility and durable state.
+
+That split is exactly why this project fits a blockchain hackathon.
+
+## Soroban Contracts
+
+The repository contains real contract code:
+
+- [contracts/emira_marketplace/src/lib.rs](contracts/emira_marketplace/src/lib.rs)
+- [contracts/emira_rewards/src/lib.rs](contracts/emira_rewards/src/lib.rs)
+
+What they currently cover:
+
+- `emira_marketplace`
+  - contract initialization
+  - create listing
+  - update listing price
+  - cancel listing
+  - mark listing as sold
+
+- `emira_rewards`
+  - reward pool initialization
+  - fund reward pool
+  - set max claim amount
+  - record player progress snapshot
+  - claim reward accounting
+
+These are real Soroban contracts with local tests and documented testnet deployment artifacts.
+
+## Testnet Proof
+
+Verified hashes are recorded here:
+[docs/submission/transaction-hash.md](docs/submission/transaction-hash.md)
+
+Highlights:
+
+- Marketplace upload: `07f4f26164870b4110deee7001eee0faaa4b8f5bd8c20fc350fb16674aa28a36`
+- Marketplace deploy: `a025b5e75ba66744f197912a8f1e0d83cee7f9d3d33fe92375f9a73b531ca28c`
+- Marketplace init: `9059e4423aa6c9bd7d379a1736dbf5015cb84091aeb02c0c0568e05d7a587df5`
+- Rewards upload: `b25f7fbcffcc9b381e80578abf2b5334531b977532633a24f2ef40cd79c97b32`
+- Rewards deploy: `a3a33e1004ef366c0240b7c3e782c9d2fe5c620558225ef8fd42822c353d8d51`
+- Rewards init: `2a62f4aabc67eb25a4d44bec9e286d9bdab15291a561048707b34de7e7a5095f`
 
 ## Tech Stack
+
+Frontend:
 
 - React 19
 - Vite
 - TypeScript
 - Tailwind CSS 4
 - Framer Motion
-- Freighter API
+
+Backend:
+
+- Node.js
+- Vercel serverless entry
+- Telegram auth/session flow
+- Profile, leaderboard, progress, and market APIs
+
+Blockchain:
+
 - Stellar SDK
-- Docker Compose
-- Rust
-- Soroban SDK
+- Stellar Testnet
+- Soroban smart contracts
+- Freighter
+- WalletConnect
 
-## Repository Layout
+## Project Structure
 
 ```text
-docs/
-  architecture.md        Game, backend, Soroban, and Freighter architecture notes
-  telegram-mini-app.md   Telegram Mini App scope and wallet plan
-  screenshots/           Project screenshots for hackathon submission
-  submission/            Submission checklist and transaction hash placeholder
 backend/
-  src/                   Lightweight hybrid API scaffold
-  data/                  File fallback runtime state
-  package.json           Backend scripts
 contracts/
-  emira_marketplace/     Soroban smart contract scaffold for marketplace state
-  emira_rewards/         Soroban smart contract scaffold for player rewards
+docs/
+  screenshots/
+  submission/
 frontend/
-  src/                   React application
-  Dockerfile             Production frontend image
-  nginx.conf             SPA-aware Nginx config
-  package.json           Frontend scripts and dependencies
-Cargo.toml               Root Rust workspace definition
-docker-compose.yml       Root Docker entrypoint
+README.md
+vercel.json
 ```
 
-## Local Development
+## Environment Variables
 
-```powershell
-cd backend
-npm run dev
+### Frontend / Vercel
+
+```env
+VITE_API_BASE_URL=https://emira-core.vercel.app
+VITE_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+VITE_TELEGRAM_WEBAPP_URL=https://emira-core.vercel.app
+VITE_TELEGRAM_BOT_USERNAME=your_bot_username
+VITE_TELEGRAM_STARTAPP=emira-core
+VITE_STELLAR_NETWORK=testnet
+VITE_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+VITE_STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+VITE_SOROBAN_MARKET_CONTRACT_ID=CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI
+VITE_SOROBAN_REWARDS_CONTRACT_ID=CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD
 ```
 
-Backend default URL:
+### Backend / Vercel
 
-```text
-http://localhost:8080
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_BOT_USERNAME=your_bot_username
+TELEGRAM_WEBAPP_URL=https://emira-core.vercel.app
+TELEGRAM_STARTAPP=emira-core
+SESSION_JWT_SECRET=your_long_random_secret
+WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+STELLAR_NETWORK=testnet
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+STELLAR_MARKETPLACE_ADDRESS=your_marketplace_settlement_address
+SOROBAN_MARKET_CONTRACT_ID=CBRKJVWTTF5DO2ZVIDOP3TSBTPYQXHGQIPA4ANFI7WKG4X65Y3MCCXJI
+SOROBAN_REWARDS_CONTRACT_ID=CCO434MY5ASOQIJALSN2KINXVEQMJKCW3HRMVRZSF2MOXUI7O3V4WTJD
+POSTGRES_URL=your_postgres_url_if_used
+ALLOW_TELEGRAM_MOCK=false
 ```
 
-Then in a second terminal:
+## Deployment Steps
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+### Vercel
 
-The Vite app will run on the port printed by Vite, usually `http://localhost:5173`.
+1. Import the GitHub repository.
+2. Keep the project root at repository root.
+3. Use the provided `vercel.json`.
+4. Add frontend and backend environment variables.
+5. Redeploy after every environment change.
 
-## Docker
+### Telegram Mini App
 
-```powershell
-docker compose up --build -d
-```
+1. Set the Mini App URL in BotFather to `https://emira-core.vercel.app`
+2. Set the menu button to the same public URL.
+3. Open the bot and test with the `PLAY` button.
 
-Open:
+### Soroban Testnet
 
-```text
-http://localhost:5173
-```
+1. Build contracts.
+2. Deploy to Stellar testnet.
+3. Record deploy and init hashes.
+4. Add contract IDs and hashes into the submission docs.
 
-When `POSTGRES_URL` is configured, the backend persists players, sessions, wallet links, listings, and progress in
-PostgreSQL. Without it, the backend falls back to `backend/data/runtime-state.json`.
+## Deployment Troubleshooting
 
-## Soroban Contract
+Common issues:
 
-The repository includes a Soroban contract workspace under `contracts/emira_rewards`.
+- Vercel env changes require redeploy.
+- Telegram popup blank screen can happen if a broken JS bundle is cached.
+- WalletConnect requires a valid `VITE_WALLETCONNECT_PROJECT_ID`.
+- Telegram auth requires correct bot token and public web app URL.
+- PostgreSQL is optional for local demos, but persistent environments should use it.
 
-Marketplace scaffold also exists under `contracts/emira_marketplace`.
+## Demo Flow
 
-Current contract scaffold responsibilities:
+1. Open [https://emira-core.vercel.app](https://emira-core.vercel.app)
+2. Open the same experience from Telegram Mini App.
+3. Show tap gameplay and upgrades.
+4. Show NFT collection and market screens.
+5. Show wallet connection via Freighter or WalletConnect.
+6. Show the recorded Soroban contract IDs and testnet transaction hashes.
+7. Explain that gameplay is fast off-chain while meaningful state is represented on Soroban.
 
-- initialize a reward pool with an admin
-- record player tap progress
-- record owned NFT counts
-- claim a reward snapshot against the pool
-- read a stored player summary
+## Current MVP Limitations
 
-This is a scaffold for hackathon progression and should be extended with real auth rules, token transfers, and tests
-before production use.
+- Testnet only
+- Reward and marketplace logic are still MVP-oriented
+- Backend persistence may fall back to file storage if Postgres is not configured
+- Telegram experience is functional but still needs mobile polish in some areas
+- Contracts should be extended and audited before any production-grade use
 
-## GitHub Pages
+## Future Work
 
-The repository includes a Pages deployment workflow for the frontend.
-The deploy build enables `VITE_USE_HASH_ROUTER=true`, so direct refreshes and deep links work on GitHub Pages without
-server-side rewrite rules.
+- Complete prepared buy/list/cancel transaction builder flow
+- Add stronger market settlement reconciliation
+- Improve Telegram-native mobile layout polish
+- Add season snapshot and claim pipeline
+- Add production-grade database and event indexing
+- Expand NFT ownership sync between backend and chain events
 
-## Telegram + Vercel Deployment
+## One-line Pitch
 
-The repository is now prepared for a single-origin Vercel deployment:
-
-- `frontend/dist` is published as the site output
-- `/api/*` and `/health` are routed to the serverless entry at `api/index.mjs`
-- frontend API calls default to the same origin, so `VITE_API_BASE_URL` can stay empty on Vercel
-- when running on Vercel without PostgreSQL, runtime fallback data is stored in `/tmp/emira-runtime-state.json`
-
-Recommended Vercel environment variables:
-
-- `TELEGRAM_BOT_USERNAME`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_WEBAPP_URL`
-- `SESSION_JWT_SECRET`
-- `WALLETCONNECT_PROJECT_ID`
-- `VITE_WALLETCONNECT_PROJECT_ID`
-- `VITE_TELEGRAM_BOT_USERNAME`
-- `VITE_TELEGRAM_WEBAPP_URL`
-- `VITE_STELLAR_NETWORK`
-- `VITE_SOROBAN_RPC_URL`
-- `VITE_STELLAR_HORIZON_URL`
-- `VITE_STELLAR_MARKETPLACE_ADDRESS`
-- `VITE_SOROBAN_MARKET_CONTRACT_ID`
-- `VITE_SOROBAN_REWARDS_CONTRACT_ID`
-- `SOROBAN_REWARDS_CONTRACT_ID`
-- `ALLOW_TELEGRAM_MOCK=false`
-
-After the first Vercel deploy, set the Telegram Mini App URL in BotFather to the exact production URL, for example:
-
-```text
-https://your-vercel-domain.vercel.app
-```
-
-If you want persistence across deployments and cold starts, configure `POSTGRES_URL`.
-
-## Environment
-
-Copy the example file before local development:
-
-```powershell
-Copy-Item frontend/.env.example frontend/.env
-```
-
-Key frontend variables:
-
-- `VITE_API_BASE_URL`: backend API URL, leave empty for same-origin Vercel deploy or set `http://localhost:8080` for local backend
-- `VITE_STELLAR_NETWORK`: expected Stellar network, default `testnet`
-- `VITE_SOROBAN_RPC_URL`: Soroban RPC URL
-- `VITE_WALLETCONNECT_PROJECT_ID`: WalletConnect project id for Telegram/mobile surfaces
-- `VITE_TELEGRAM_BOT_USERNAME`: Mini App bot username
-- `VITE_TELEGRAM_WEBAPP_URL`: public Telegram Mini App URL
-- `VITE_SOROBAN_MARKET_CONTRACT_ID`: live marketplace contract id
-- `VITE_SOROBAN_REWARDS_CONTRACT_ID`: live rewards contract id
-
-Key backend variables:
-
-- `PORT`: backend port
-- `STELLAR_NETWORK`: expected network for chain actions
-- `SOROBAN_RPC_URL`: Soroban RPC URL
-- `STELLAR_HORIZON_URL`: Horizon URL for transaction submission
-- `STELLAR_MARKETPLACE_ADDRESS`: destination account for XLM market settlement
-- `SOROBAN_MARKET_CONTRACT_ID`: marketplace contract id for prepared on-chain actions
-- `SOROBAN_REWARDS_CONTRACT_ID`: rewards contract id for backend chain metadata
-- `TELEGRAM_BOT_USERNAME`: Telegram bot username used by the Mini App
-- `TELEGRAM_WEBAPP_URL`: Telegram Mini App URL
-- `WALLETCONNECT_PROJECT_ID`: WalletConnect project id for mobile / Telegram signing
-- `TELEGRAM_BOT_TOKEN`: Telegram WebApp validation token
-- `SESSION_JWT_SECRET`: backend session signing secret
-- `POSTGRES_URL`: persistent database connection string
-- `DATA_FILE`: optional local runtime state file path, not needed on Vercel unless you want a custom tmp path
-- `ALLOW_TELEGRAM_MOCK`: keep `false` in production; only enable for local testing
-
-## Planned Backend And Contract Direction
-
-High-frequency gameplay state should stay off-chain in the backend:
-
-- taps
-- energy
-- combo
-- daily tasks
-- live leaderboard calculations
-
-Soroban should store durable economic state:
-
-- reward claims
-- NFT ownership
-- season reward snapshots
-- vault funding and claim status
-
-See [docs/architecture.md](docs/architecture.md) for the detailed plan.
-See [docs/roadmap.md](docs/roadmap.md) for the staged development roadmap.
-See [docs/telegram-mini-app.md](docs/telegram-mini-app.md) for the Telegram Mini App scope.
-See [docs/deploy-testnet.md](docs/deploy-testnet.md) for the Soroban testnet deployment flow.
-
-Backend API now also includes:
-
-- `POST /api/v1/auth/telegram`
-- `GET /api/v1/auth/session`
-- `POST /api/v1/wallet/link`
-- `GET /api/v1/wallet/link/:playerId`
-
-## GitHub Workflow
-
-The repository includes:
-
-- `frontend-ci.yml` for install, lint, and build validation on pull requests and pushes to `main`
-- `deploy-pages.yml` for GitHub Pages deployment from `main`
-
-## Hackathon Submission Files
-
-Required repository artifacts are included here:
-
-- English root `README.md`
-- screenshot folder at `docs/screenshots/`
-- transaction hash placeholder at `docs/submission/transaction-hash.md`
-- submission checklist at `docs/submission/checklist.md`
-
-Important note:
-
-- Real Stellar testnet deploy and init transaction hashes are now recorded in
-  `docs/submission/transaction-hash.md`.
-- After finalizing the repository, the GitHub repository link should be submitted through the Rise In platform.
+Emira Core turns a Telegram clicker game into a credible Stellar / Soroban hackathon project by keeping gameplay instant off-chain while moving durable reward and marketplace state onto Soroban.
