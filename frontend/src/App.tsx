@@ -169,8 +169,8 @@ const profileBackgroundAssets = import.meta.glob('./assets/game/profil-backgroun
 
 const nftRarityScale: { rarity: Rarity; power: string; tone: string }[] = [
   { rarity: 'Legendary', power: '+18%', tone: 'from-amber-200 via-orange-200 to-rose-300' },
-  { rarity: 'Epic', power: '+12%', tone: 'from-sky-200 via-cyan-200 to-blue-400' },
-  { rarity: 'Rare', power: '+8%', tone: 'from-fuchsia-200 via-pink-200 to-rose-300' },
+  { rarity: 'Epic', power: '+12%', tone: 'from-fuchsia-200 via-pink-200 to-rose-300' },
+  { rarity: 'Rare', power: '+8%', tone: 'from-sky-200 via-cyan-200 to-blue-400' },
   { rarity: 'Common', power: '+3%', tone: 'from-emerald-200 via-lime-200 to-teal-300' },
 ];
 const rarityRank: Record<Rarity, number> = {
@@ -286,6 +286,7 @@ const rarityByName: Partial<Record<string, Rarity>> = {
   Guts: 'Legendary',
   'WinRar Kedi': 'Legendary',
   'Minecraft Kedisi': 'Legendary',
+  'Kozmik Kedi': 'Legendary',
   'Ates Kedisi': 'Epic',
   'Bosluk Kedisi': 'Epic',
   'Bogazicili Kedi': 'Epic',
@@ -327,7 +328,6 @@ const rarityByName: Partial<Record<string, Rarity>> = {
   'Kahve Benekli Kedi 2': 'Rare',
   'Kahve Kedi': 'Rare',
   'Gri Benekli Kedi': 'Rare',
-  'Kozmik Kedi': 'Rare',
 };
 
 const nftImageScaleByName: Partial<Record<string, number>> = {
@@ -402,7 +402,7 @@ const nftStories: Record<string, string> = {
     'Coin Kedisi, altin pariltilari arasinda buyumus zengin ruhlu bir kedidir. Her tiklamanin bir gun buyuk kazanca donusecegine inanir. Marketplacete gosterisli durmayi seven oyuncular icin birebirdir.',
   'Elmas Kedi':
     'Elmas Kedi, buz gibi parlakligiyla nadirligin semboludur. Isigi farkli acilardan kirilir ve profil ekraninda hemen dikkat ceker. Onu elde eden oyuncular genelde kolay kolay satmak istemez.',
-  'Error Code 36': '...',
+  'Error Code 36': 'T••l• b•r k•zd•n •sin•en••er•k ta••rl•n•ı•tır',
   Guts:
     'Guts, karanlik savaslardan gecmis yalniz ve sert bir kedidir. Buyuk kilici ve yipranmis gorunusu, onun asla pes etmeyen ruhunu anlatir. Zorlu grind yapan ve liderlik tablosunda savasan oyunculara yakisir.',
   'Habibi Kedi':
